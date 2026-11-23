@@ -232,10 +232,7 @@ private fun UserMessage(u: UserMsg, compact: Boolean) {
                 if (u.files > 0) Tag(stringResource(R.string.files_n, u.files))
             }
         }
-        if (u.text.isNotBlank()) SelectionContainer {
-            Text(u.text, Modifier.widthIn(max = maxW).clip(Radius.xl).background(c.bubble).padding(horizontal = 16.dp, vertical = 10.dp),
-                style = DshType.s14, color = c.labelPrimary)
-        }
+        if (u.text.isNotBlank()) UserBubble(u.text, Modifier.widthIn(max = maxW))
         if (!compact) Row(Modifier.padding(top = 6.dp).height(28.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(Fmt.stamp(context, u.time), style = DshType.xs13, color = c.labelTertiary)
             IconBtn(R.drawable.dsw_copy_outline, { copyText(context, u.text) }, iconSize = 15.dp, tint = c.labelTertiary, contentDescription = stringResource(R.string.copy_message))
@@ -243,15 +240,22 @@ private fun UserMessage(u: UserMsg, compact: Boolean) {
     }
 }
 
+/** The user's words in a bubble, as markdown (#85) with every line break kept: what was typed or pasted keeps its shape. */
+@Composable
+private fun UserBubble(text: String, modifier: Modifier = Modifier) {
+    val c = Dsh.colors
+    Box(modifier.clip(Radius.xl).background(c.bubble).padding(horizontal = 16.dp, vertical = 6.dp)) {
+        SelectionContainer { DshMarkdown(text, breaks = true) }
+    }
+}
+
 /** A message steered into the running turn that dsh has not logged yet: the user bubble, dimmed, with its state. */
 @Composable
 private fun PendingSteer(m: SteerMessage) {
-    val c = Dsh.colors
     val maxW = (LocalConfiguration.current.screenWidthDp * 0.82f).dp
     Column(Modifier.fillMaxWidth().padding(bottom = 12.dp).alpha(0.6f), horizontalAlignment = Alignment.End) {
         if (m.images > 0) Tag(stringResource(R.string.images_n, m.images), modifier = Modifier.padding(bottom = 8.dp))
-        if (m.text.isNotBlank()) Text(m.text, Modifier.widthIn(max = maxW).clip(Radius.xl).background(c.bubble).padding(horizontal = 16.dp, vertical = 10.dp),
-            style = DshType.s14, color = c.labelPrimary)
+        if (m.text.isNotBlank()) UserBubble(m.text, Modifier.widthIn(max = maxW))
         Spacer(Modifier.height(6.dp))
         Tag(stringResource(R.string.steer_pending), Tone.Neutral)
     }

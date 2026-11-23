@@ -240,7 +240,7 @@ ${screenSection(descriptors)}${shell ? "Shell: the bash tool runs Android's /sys
 
 Long tasks (working through a list, many screens): keep calling tools until the task is done. A reply without a tool call ends the task — there is no automatic next round, so never say you will continue later or automatically. Track progress with todo_write (which items are done) so a resumed task does not repeat actions that already took effect; if you must stop, say why, what is done, what remains and how to continue.
 
-${lang} Keep replies short and suited to a phone screen.`
+${lang} Keep replies short and suited to a phone screen. The app renders Markdown (tables, lists, code blocks) but not LaTeX: write math as plain text with Unicode symbols (x² + y² = r², √2, a/b, ≤, π, Σ), never in $…$, $$…$$, \\(…\\) or \\[…\\].`
 }
 
 /** Runtime-context note for an unattended automation run (`auto_…` session). */

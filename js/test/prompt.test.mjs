@@ -52,3 +52,8 @@ test('long tasks: no "next round" claims, progress kept with todo_write (#37)', 
   for (const s of ['keep calling tools until the task is done', 'there is no automatic next round', 'todo_write', 'does not repeat actions', 'what remains'])
     assert.ok(text.includes(s), s)
 })
+
+test('math is asked for as plain text: the app renders Markdown but not LaTeX (#85)', () => {
+  const text = systemPromptSection('zh-CN', [])
+  assert.ok(text.includes('not LaTeX') && text.includes('Unicode'))
+})
