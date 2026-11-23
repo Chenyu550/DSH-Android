@@ -72,6 +72,7 @@ class SettingsViewModel @Inject constructor(
 ) : ViewModel() {
     val settings: StateFlow<DshSettings> = repo.settings.stateIn(viewModelScope, SharingStarted.Eagerly, DshSettings())
     val usage: StateFlow<List<UsageEntity>> = usage.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val usageTotal: StateFlow<UsageEntity?> = usage.observeTotal().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val engineState: StateFlow<EngineState> = engine.state
     val doctor = MutableStateFlow<List<DoctorCheck>>(emptyList())
     val keyStatus = MutableStateFlow<String?>(null)

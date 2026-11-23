@@ -398,6 +398,8 @@
     <string name="usage_input">Ввод</string>
     <string name="usage_cached">Из кеша</string>
     <string name="usage_cache_hit">Попадания в кеш</string>
+    <string name="usage_cache_hit_overall">Всего %1$s</string>
+    <string name="usage_cache_hit_today">Сегодня %1$s</string>
     <string name="usage_cache_hit_short">кеш %1$s</string>
     <string name="usage_output">Вывод</string>
     <string name="usage_reasoning">Рассуждения</string>

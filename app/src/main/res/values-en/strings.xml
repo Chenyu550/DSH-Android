@@ -401,6 +401,8 @@
     <string name="usage_input">Input</string>
     <string name="usage_cached">Cache read</string>
     <string name="usage_cache_hit">Cache hit rate</string>
+    <string name="usage_cache_hit_overall">Overall %1$s</string>
+    <string name="usage_cache_hit_today">Today %1$s</string>
     <string name="usage_cache_hit_short">cache %1$s</string>
     <string name="usage_output">Output</string>
     <string name="usage_reasoning">Reasoning</string>

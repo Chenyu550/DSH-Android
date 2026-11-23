@@ -384,7 +384,13 @@ private fun UsageSection(vm: SettingsViewModel) {
             Stat(stringResource(R.string.usage_cached), Fmt.tokens(today?.cachedTokens ?: 0))
             Stat(stringResource(R.string.usage_output), Fmt.tokens(today?.outputTokens ?: 0))
         }
-        today?.let { cacheHitRate(it.cachedTokens, it.inputTokens) }?.let { SettingsRow(stringResource(R.string.usage_cache_hit), Fmt.percent(it)) }
+        // Overall (every recorded day) and today's, labelled as such (#76: today's alone read as the overall rate).
+        val total by vm.usageTotal.collectAsStateWithLifecycle()
+        val overallHit = total?.let { cacheHitRate(it.cachedTokens, it.inputTokens) }
+        val todayHit = today?.let { cacheHitRate(it.cachedTokens, it.inputTokens) }
+        if (overallHit != null || todayHit != null) SettingsRow(stringResource(R.string.usage_cache_hit), listOfNotNull(
+            overallHit?.let { stringResource(R.string.usage_cache_hit_overall, Fmt.percent(it)) },
+            todayHit?.let { stringResource(R.string.usage_cache_hit_today, Fmt.percent(it)) }).joinToString(" · "))
         if (s.dailyTokenLimit > 0) SettingsRow(stringResource(R.string.daily_limit), Fmt.tokens(s.dailyTokenLimit))
     }
     SettingsGroupTitle(stringResource(R.string.usage_30d))
