@@ -198,3 +198,71 @@ test('#59: openai-responses route as the app writes it: POST /v1/responses, flat
     assert.equal('reasoning' in (await run('my-gateway/plain')).req.body, false)
   } finally { server.closeAllConnections(); await new Promise(r => server.close(r)) }
 })
+
+// #84 (patch 23): OpenAI reasoning models on the Responses wire. The API refuses a follow-up whose
+// `fc_…` item arrives without the `rs_…` reasoning item it was produced with.
+test('#84: openai-responses reasoning model: encrypted reasoning asked for, kept with an empty summary, replayed; old history sent without item ids', async () => {
+  const requests = []
+  const server = createServer((req, res) => {
+    let raw = ''
+    req.on('data', c => { raw += c })
+    req.on('end', () => {
+      requests.push(JSON.parse(raw))
+      res.writeHead(200, { 'content-type': 'text/event-stream' })
+      const ev = (type, o) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...o })}\n\n`)
+      const reasoning = { type: 'reasoning', id: 'rs_1', summary: [], encrypted_content: 'ENC' }
+      const call = { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'read', arguments: '{"path":"a"}', status: 'completed' }
+      ev('response.created', { response: { id: 'resp_1', status: 'in_progress', output: [] } })
+      ev('response.output_item.added', { output_index: 0, item: { type: 'reasoning', id: 'rs_1', summary: [] } })
+      ev('response.output_item.done', { output_index: 0, item: reasoning })
+      ev('response.output_item.added', { output_index: 1, item: { ...call, arguments: '' } })
+      ev('response.output_item.done', { output_index: 1, item: call })
+      // Azure-style terminal copy without the payload must not replace it.
+      ev('response.completed', { response: { id: 'resp_1', status: 'completed', usage: { input_tokens: 5, output_tokens: 3 },
+        output: [{ type: 'reasoning', id: 'rs_1', summary: [] }, call] } })
+      res.end()
+    })
+  })
+  await new Promise(r => server.listen(0, '127.0.0.1', r))
+  const base = `http://127.0.0.1:${server.address().port}/v1`
+  const model = id => ({ id, contextWindow: 131072, maxTokens: 16384, defaults: { maxTokens: 16384 }, capabilities: { modalities: ['text'] } })
+  const profiles = resolveProfiles({ r: { interfaceType: 'openai-responses', baseURL: base, apiKey: 'sk-test', models: [model('gpt-5.5'), model('my-gateway/plain')] } })
+  const limiter = new ConcurrencyLimiter(1)
+  const adapter = new OwcProfilesAdapter({ profiles: () => profiles, limiter: () => limiter, resolveApiKey: async p => p.apiKey })
+  const tools = [{ name: 'read', description: 'Read a file', parameters: { type: 'object', properties: { path: { type: 'string' } } } }]
+  const user = { role: 'user', content: [{ type: 'text', text: 'hi' }] }
+  const result = { role: 'tool', toolCallId: 'call_1', content: [{ type: 'text', text: 'file a' }] }
+  const run = async (m, messages) => {
+    const chunks = []
+    for await (const c of adapter.stream({ provider: 'r', model: m, tools, messages })) chunks.push(c)
+    return { chunks, body: requests.at(-1) }
+  }
+  /** The durable assistant message the harness assembles from one turn's chunks. */
+  const assistantOf = (m, chunks) => ({ role: 'assistant', content: chunks.filter(c => c.type === 'block-end').map(c => c.block),
+    source: { kind: 'model', provider: 'r', model: m, replayState: chunks.at(-1).replayState } })
+  try {
+    // No level chosen (the family default applies): the payload is still asked for.
+    const first = await run('gpt-5.5', [user])
+    assert.deepEqual(first.body.include, ['reasoning.encrypted_content'])
+    const assistant = assistantOf('gpt-5.5', first.chunks)
+    assert.deepEqual(assistant.content.map(b => b.type), ['reasoning', 'tool-call'])
+    assert.equal(assistant.content[0].text, '')
+
+    // The follow-up hands back the reasoning item verbatim (payload kept), then the call with its id.
+    const { body } = await run('gpt-5.5', [user, assistant, result])
+    const [reasoning, call, output] = body.input.slice(1)
+    assert.deepEqual(reasoning, { type: 'reasoning', id: 'rs_1', summary: [], encrypted_content: 'ENC' })
+    assert.deepEqual(call, { type: 'function_call', call_id: 'call_1', name: 'read', arguments: '{"path":"a"}', id: 'fc_1' })
+    assert.deepEqual(output, { type: 'function_call_output', call_id: 'call_1', output: 'file a' })
+
+    // History recorded before the fix: the call's reasoning item was never kept. Sent without the
+    // server ids (which the API would refuse), pairing by call_id intact.
+    const old = { ...assistant, content: [assistant.content[1]],
+      source: { ...assistant.source, replayState: { ...assistant.source.replayState, blocks: [{ type: 'tool-call', itemId: 'fc_1' }] } } }
+    const legacy = (await run('gpt-5.5', [user, old, result])).body.input.slice(1)
+    assert.deepEqual(legacy.map(i => [i.type, i.id, i.call_id]), [['function_call', undefined, 'call_1'], ['function_call_output', undefined, 'call_1']])
+
+    // Not an OpenAI reasoning family: no include.
+    assert.equal('include' in (await run('my-gateway/plain', [user])).body, false)
+  } finally { server.closeAllConnections(); await new Promise(r => server.close(r)) }
+})
