@@ -62,7 +62,7 @@ fun VoiceStrip(voice: VoiceInput, onKeyboard: () -> Unit) {
         is VoiceState.Listening -> Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(Modifier.size(8.dp).scale(0.6f + 0.6f * s.level).clip(CircleShape).background(if (s.ready) c.info else c.labelDimmed))
-            Text(stringResource(if (s.ready) R.string.voice_listening else R.string.voice_starting), Modifier.weight(1f), style = DshType.xxs12, color = c.labelSecondary)
+            Text(stringResource(when { s.transcribing -> R.string.voice_transcribing; s.ready -> R.string.voice_listening; else -> R.string.voice_starting }), Modifier.weight(1f), style = DshType.xxs12, color = c.labelSecondary)
             Text(stringResource(R.string.cancel), Modifier.clip(Radius.sm).pressable({ voice.cancel() }, Radius.sm).padding(horizontal = 8.dp, vertical = 2.dp),
                 style = DshType.xxs12m, color = c.labelSecondary)
         }
@@ -94,5 +94,6 @@ private fun errorText(e: VoiceError) = when (e) {
     VoiceError.Busy -> R.string.voice_err_busy
     VoiceError.Audio -> R.string.voice_err_audio
     VoiceError.Language -> R.string.voice_err_language
+    VoiceError.Provider -> R.string.voice_err_provider
     VoiceError.Other -> R.string.voice_err_other
 }

@@ -146,7 +146,7 @@ fun SettingsSectionScreen(section: SettingsSection, onBack: () -> Unit, open: (R
                 Spacer(Modifier.height(8.dp))
                 io.github.jackwener.dsh.feature.account.AccountSettingsSection(vm.account, usingApiKey = hasKey)
             }
-            SettingsSection.General -> GeneralSection(vm)
+            SettingsSection.General -> GeneralSection(vm) { open(ProviderRoute(preset = it)) }
             SettingsSection.Model -> ModelSection(vm) { open(ProviderRoute(it.takeUnless { id -> id == NEW_PROVIDER })) }
             SettingsSection.Agent -> AgentSection(vm) { open(AppNotesRoute) }
             SettingsSection.Extensions -> io.github.jackwener.dsh.feature.extensions.ExtensionsSection(open, onTop)
@@ -205,7 +205,7 @@ private fun resumeTick(): Int {
 }
 
 @Composable
-private fun GeneralSection(vm: SettingsViewModel) {
+private fun GeneralSection(vm: SettingsViewModel, onAddProvider: (String) -> Unit) {
     val s by vm.settings.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val tick = resumeTick()
@@ -263,9 +263,32 @@ private fun GeneralSection(vm: SettingsViewModel) {
             })
         SettingsRow(stringResource(R.string.voice_on_assist), stringResource(R.string.voice_on_assist_desc),
             trailing = { DSwitch(s.voiceOnAssist, { vm.setVoiceOnAssist(it) }) })
+        VoiceServiceRow(tick, s.providers, onAddProvider)
         SettingsRow(stringResource(R.string.allow_external_apps), stringResource(R.string.allow_external_apps_desc),
             trailing = { DSwitch(s.allowExternalApps, { vm.setAllowExternalApps(it) }) })
     }
+}
+
+/** 语音识别: what voice input uses on this phone (#81); without any recognizer, the way to a transcription provider. */
+@Composable
+private fun VoiceServiceRow(tick: Int, providers: List<io.github.jackwener.dsh.core.provider.ProviderConfig>, onAddProvider: (String) -> Unit) {
+    val context = LocalContext.current
+    val system = remember(tick) {
+        if (android.os.Build.VERSION.SDK_INT >= 31 && runCatching { android.speech.SpeechRecognizer.isOnDeviceRecognitionAvailable(context) }.getOrDefault(false)) ""
+        else io.github.jackwener.dsh.feature.voice.Recognizers.best(context)?.let { c ->
+            runCatching { context.packageManager.getApplicationInfo(c.packageName, 0).loadLabel(context.packageManager).toString() }.getOrDefault(c.packageName)
+        }
+    }
+    val cloud = remember(providers) { io.github.jackwener.dsh.core.provider.SpeechToText.pick(providers) }
+    val desc = when {
+        system == "" -> stringResource(R.string.voice_service_on_device)
+        system != null -> stringResource(R.string.voice_service_system, system)
+        cloud != null -> stringResource(R.string.voice_service_cloud, cloud.provider.name, cloud.model)
+        else -> stringResource(R.string.voice_service_none)
+    }
+    val none = system == null && cloud == null
+    SettingsRow(stringResource(R.string.voice_service), desc, onClick = if (none) ({ onAddProvider("siliconflow") }) else null,
+        trailing = if (none) ({ DIcon(R.drawable.dsw_chevron_right_outline, size = 14.dp, tint = Dsh.colors.labelTertiary) }) else null)
 }
 
 @Composable

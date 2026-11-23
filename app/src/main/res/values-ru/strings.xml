@@ -803,7 +803,7 @@
     <string name="voice_listening">Слушаю…</string>
     <string name="voice_sending">Скоро отправится</string>
     <string name="voice_tap_edit">Нажми, чтобы изменить</string>
-    <string name="voice_err_no_recognizer">На устройстве нет доступного сервиса распознавания речи, введи текст с клавиатуры</string>
+    <string name="voice_err_no_recognizer">На устройстве нет сервиса распознавания речи. Добавь провайдера транскрипции в Настройки → Общие → Распознавание речи или введи текст с клавиатуры</string>
     <string name="voice_err_permission">Для голосового ввода нужно разрешение на микрофон. Нажми, чтобы открыть настройки</string>
     <string name="voice_err_no_match">Не расслышал, нажми, чтобы повторить</string>
     <string name="voice_err_network">Для распознавания речи нужна сеть. Проверь сеть и нажми, чтобы повторить</string>
@@ -811,6 +811,13 @@
     <string name="voice_err_audio">Не удаётся записать звук, возможно, микрофон занят. Нажми, чтобы повторить</string>
     <string name="voice_err_language">Распознавание речи не поддерживает текущий язык, введи текст с клавиатуры</string>
     <string name="voice_err_other">Ошибка распознавания речи, нажми, чтобы повторить</string>
+    <string name="voice_transcribing">Распознаю…</string>
+    <string name="voice_err_provider">Провайдер транскрипции отклонил запрос. Проверь ключ, баланс или модель и нажми, чтобы повторить</string>
+    <string name="voice_service">Распознавание речи</string>
+    <string name="voice_service_on_device">Используется встроенное офлайн-распознавание системы</string>
+    <string name="voice_service_system">Используется системное распознавание: %1$s</string>
+    <string name="voice_service_cloud">На устройстве нет сервиса распознавания речи; голосовой ввод транскрибирует %1$s (%2$s)</string>
+    <string name="voice_service_none">На устройстве нет сервиса распознавания речи (обычно на телефонах без Google). Нажми, чтобы добавить SiliconFlow (бесплатная транскрипция SenseVoice); подойдут и OpenAI, Groq и другие провайдеры с транскрипцией</string>
     <string name="prov_hint_ollama">Ollama по умолчанию принимает только подключения с самого компьютера. Задай на компьютере переменную окружения OLLAMA_HOST=0.0.0.0 и перезапусти Ollama, затем замени localhost в адресе на локальный IP компьютера; телефон и компьютер должны быть в одной сети Wi-Fi.</string>
     <string name="prov_hint_lmstudio">В настройках локального сервера LM Studio включи «Serve on Local Network» и запусти сервер, затем замени localhost в адресе на локальный IP компьютера; телефон и компьютер должны быть в одной сети Wi-Fi.</string>
     <string name="prov_test">Проверить</string>

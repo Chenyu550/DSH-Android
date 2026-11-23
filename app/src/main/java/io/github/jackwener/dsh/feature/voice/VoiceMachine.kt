@@ -3,14 +3,15 @@ package io.github.jackwener.dsh.feature.voice
 /** What the voice strip shows; [VoiceMachine] is the only thing that changes it. */
 sealed interface VoiceState {
     data object Idle : VoiceState
-    /** [ready]: the recognizer is taking audio. [level]: 0..1 input level. */
-    data class Listening(val text: String = "", val level: Float = 0f, val ready: Boolean = false) : VoiceState
+    /** [ready]: the recognizer is taking audio. [level]: 0..1 input level. [transcribing]: audio sent, waiting for the text (CloudSpeech). */
+    data class Listening(val text: String = "", val level: Float = 0f, val ready: Boolean = false, val transcribing: Boolean = false) : VoiceState
     /** The final text sits in the composer and is sent when [leftMs] runs out, unless the user edits or cancels. */
     data class Countdown(val text: String, val leftMs: Long, val totalMs: Long) : VoiceState
     data class Failed(val error: VoiceError) : VoiceState
 }
 
-enum class VoiceError { NoRecognizer, Permission, NoMatch, Network, Busy, Audio, Language, Other }
+/** [Provider]: the transcription provider refused the request (key, balance, model not enabled). */
+enum class VoiceError { NoRecognizer, Permission, NoMatch, Network, Busy, Audio, Language, Provider, Other }
 
 sealed interface VoiceEvent {
     data object Start : VoiceEvent
@@ -18,6 +19,8 @@ sealed interface VoiceEvent {
     data class Level(val rmsDb: Float) : VoiceEvent
     data class Partial(val text: String) : VoiceEvent
     data class Final(val text: String) : VoiceEvent
+    /** Recording ended and the audio went for transcription. */
+    data object Transcribing : VoiceEvent
     data class Error(val error: VoiceError) : VoiceEvent
     data class Tick(val elapsedMs: Long) : VoiceEvent
     /** The user typed, tapped the countdown, or the panel went away: keep the text, send nothing. */
@@ -45,6 +48,7 @@ class VoiceMachine(private val autoSend: Boolean = true, private val countdownMs
             VoiceEvent.Ready -> { if (s is VoiceState.Listening) state = s.copy(ready = true); null }
             is VoiceEvent.Level -> { if (s is VoiceState.Listening) state = s.copy(level = level(e.rmsDb), ready = true); null }
             is VoiceEvent.Partial -> { if (s is VoiceState.Listening && e.text.isNotBlank()) state = s.copy(text = e.text.trim()); null }
+            VoiceEvent.Transcribing -> { if (s is VoiceState.Listening) state = s.copy(transcribing = true, level = 0f); null }
             is VoiceEvent.Final -> if (s is VoiceState.Listening) finish(e.text.trim().ifEmpty { s.text }) else null
             // Many recognizers end with NO_MATCH / a client error after partials: what was heard still counts.
             is VoiceEvent.Error -> when {

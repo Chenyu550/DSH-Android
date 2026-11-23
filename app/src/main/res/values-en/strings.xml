@@ -817,7 +817,7 @@
     <string name="voice_listening">Listening…</string>
     <string name="voice_sending">Sending</string>
     <string name="voice_tap_edit">Tap to edit</string>
-    <string name="voice_err_no_recognizer">No speech recognizer on this phone. Type instead</string>
+    <string name="voice_err_no_recognizer">No speech recognizer on this phone. Add a transcription provider in Settings → General → Speech recognition, or type instead</string>
     <string name="voice_err_permission">Voice input needs the microphone permission. Tap to open settings</string>
     <string name="voice_err_no_match">Didn\'t catch that. Tap to retry</string>
     <string name="voice_err_network">Speech recognition needs a network connection. Tap to retry</string>
@@ -825,6 +825,13 @@
     <string name="voice_err_audio">Can\'t record; the microphone may be in use. Tap to retry</string>
     <string name="voice_err_language">Speech recognition doesn\'t support this language. Type instead</string>
     <string name="voice_err_other">Speech recognition failed. Tap to retry</string>
+    <string name="voice_transcribing">Transcribing…</string>
+    <string name="voice_err_provider">The transcription provider refused the request. Check its key, balance or model, then tap to retry</string>
+    <string name="voice_service">Speech recognition</string>
+    <string name="voice_service_on_device">Uses the system\'s on-device recognizer</string>
+    <string name="voice_service_system">Uses the system recognizer: %1$s</string>
+    <string name="voice_service_cloud">No speech recognizer on this phone; voice input is transcribed by %1$s (%2$s)</string>
+    <string name="voice_service_none">No speech recognizer on this phone (common without Google). Tap to add SiliconFlow (free SenseVoice transcription, good at Chinese); OpenAI, Groq and other providers with transcription work too</string>
     <string name="prov_hint_ollama">Ollama only accepts connections from the computer itself by default. On the computer, set the environment variable OLLAMA_HOST=0.0.0.0 and restart Ollama, then replace localhost in the address with the computer\'s LAN IP. The phone and computer must be on the same Wi-Fi.</string>
     <string name="prov_hint_lmstudio">In LM Studio\'s local server settings, turn on Serve on Local Network and start the server, then replace localhost in the address with the computer\'s LAN IP. The phone and computer must be on the same Wi-Fi.</string>
     <string name="prov_test">Test</string>
