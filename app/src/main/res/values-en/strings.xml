@@ -928,4 +928,11 @@
     <string name="upd_res_skipped">Skipped %1$s</string>
     <string name="upd_res_failed">Check failed: %1$s</string>
     <string name="upd_view">View</string>
+    <string name="set_engine_options">Engine launch options (advanced)</string>
+    <string name="set_engine_options_desc">Extra Node startup flags, space-separated, e.g. --max-old-space-size=1024. An invalid flag can keep the engine from starting; saved flags apply when the idle engine restarts.</string>
+    <string name="set_engine_options_none">None</string>
+    <string name="set_engine_options_refused">Not accepted: %1$s (flags that load code, open a debugger port or make Node do something other than run the engine)</string>
+    <string name="engine_jitless">Compatibility mode (no JIT)</string>
+    <string name="engine_jitless_desc">Turn on if the engine keeps crashing on this device (SIGSEGV, common on Android 16): V8 runs without its JIT compiler, more stable but slower, and features that need WebAssembly (such as image attachment processing) are unavailable. Applies when the idle engine restarts.</string>
+    <string name="engine_jitless_auto">Turned on automatically %1$s after repeated engine crashes; once you turn it off it stays off.</string>
 </resources>

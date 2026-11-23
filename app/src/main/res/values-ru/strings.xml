@@ -913,4 +913,11 @@
     <string name="upd_res_skipped">%1$s пропущена</string>
     <string name="upd_res_failed">Не удалось проверить: %1$s</string>
     <string name="upd_view">Открыть</string>
+    <string name="set_engine_options">Параметры запуска движка (расширенные)</string>
+    <string name="set_engine_options_desc">Дополнительные флаги Node через пробел, например --max-old-space-size=1024. Неверный флаг может помешать запуску движка; сохранённые флаги применяются при перезапуске простаивающего движка.</string>
+    <string name="set_engine_options_none">Не заданы</string>
+    <string name="set_engine_options_refused">Не принимается: %1$s (флаги, загружающие код, открывающие порт отладчика или заставляющие Node делать что-то кроме запуска движка)</string>
+    <string name="engine_jitless">Режим совместимости (без JIT)</string>
+    <string name="engine_jitless_desc">Включите, если движок на этом устройстве постоянно падает (SIGSEGV, часто на Android 16): V8 работает без JIT-компилятора — стабильнее, но медленнее, а функции, которым нужен WebAssembly (например, обработка изображений во вложениях), недоступны. Применяется при перезапуске простаивающего движка.</string>
+    <string name="engine_jitless_auto">Включён автоматически %1$s после повторных сбоев движка; если выключить, автоматически больше не включится.</string>
 </resources>

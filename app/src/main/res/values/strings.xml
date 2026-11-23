@@ -928,4 +928,11 @@
     <string name="upd_res_skipped">已跳过 %1$s</string>
     <string name="upd_res_failed">检查失败：%1$s</string>
     <string name="upd_view">查看</string>
+    <string name="set_engine_options">引擎启动参数（高级）</string>
+    <string name="set_engine_options_desc">额外的 Node 启动参数，空格分隔，例如 --max-old-space-size=1024。参数无效时引擎可能无法启动；保存后引擎空闲时重启生效。</string>
+    <string name="set_engine_options_none">未设置</string>
+    <string name="set_engine_options_refused">不接受：%1$s（加载代码、调试端口或让 Node 不运行引擎的参数不能使用）</string>
+    <string name="engine_jitless">兼容模式（关闭 JIT）</string>
+    <string name="engine_jitless_desc">引擎在本机反复闪退（SIGSEGV，常见于 Android 16）时打开：V8 不再即时编译，更稳定但更慢，依赖 WebAssembly 的功能（如图片附件处理）不可用。引擎空闲时重启生效。</string>
+    <string name="engine_jitless_auto">%1$s 检测到引擎连续崩溃，已自动开启；关闭后不再自动开启。</string>
 </resources>

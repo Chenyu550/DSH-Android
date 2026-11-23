@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import io.github.jackwener.dsh.core.engine.EngineRuntimeEnv
 import io.github.jackwener.dsh.core.data.BusySend
 import io.github.jackwener.dsh.core.data.Effort
 import io.github.jackwener.dsh.core.data.SecretStore
@@ -188,6 +189,8 @@ class SettingsViewModel @Inject constructor(
     fun setBall(on: Boolean) = viewModelScope.launch { repo.setFloatingBall(on); FloatingBallService.setEnabled(context, on) }
     fun setBallStatus(on: Boolean) = viewModelScope.launch { repo.setBallStatus(on) }
     fun setLimits(daily: Long, session: Long) = viewModelScope.launch { repo.setLimits(daily, session) }
+    fun setEngineNodeOptions(raw: String) = viewModelScope.launch { repo.setEngineNodeOptions(EngineRuntimeEnv.parseExtraNodeOptions(raw).joinToString(" ")) }
+    fun setEngineJitless(on: Boolean) = viewModelScope.launch { repo.setEngineJitless(on) }
     fun toggleNotificationApp(pkg: String) = viewModelScope.launch {
         val cur = settings.value.notificationBlocked
         repo.setNotificationBlocked(if (pkg in cur) cur - pkg else cur + pkg)

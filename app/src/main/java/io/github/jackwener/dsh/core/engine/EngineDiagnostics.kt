@@ -61,10 +61,14 @@ object EngineDiagnostics {
             .sortedByDescending { it.name }
             .map { f -> ExitRecord(f.name.removePrefix("exit-").removeSuffix(".txt").toLongOrNull() ?: f.lastModified(), f.useLines { it.firstOrNull() } ?: "", f) }
 
-    /** Imports `:engine` exit reasons recorded by the system since the last call. Safe to call from any thread. */
-    @Synchronized fun collectExitInfo(context: Context) {
-        if (Build.VERSION.SDK_INT < 30) return
-        runCatching {
+    /**
+     * Imports `:engine` exit reasons recorded by the system since the last call. Safe to call from
+     * any thread. Returns how many of them were native crashes (SIGSEGV / SIGBUS / SIGILL: what a
+     * V8 JIT fault looks like, #66).
+     */
+    @Synchronized fun collectExitInfo(context: Context): Int {
+        if (Build.VERSION.SDK_INT < 30) return 0
+        return runCatching {
             val am = context.getSystemService(ActivityManager::class.java)
             val dir = logsDir(context)
             val marker = File(dir, ".exit-seen")
@@ -73,21 +77,27 @@ object EngineDiagnostics {
             val fresh = am.getHistoricalProcessExitReasons(context.packageName, 0, 16)
                 .filter { it.processName == engine && it.timestamp > seen }
                 .sortedBy { it.timestamp }
-            fresh.forEach { save(dir, it) }
+            val crashes = fresh.count { save(dir, it) && isNativeCrash(it.reason, it.status) }
             fresh.maxOfOrNull { it.timestamp }?.let { marker.writeText(it.toString()) }
             prune(dir)
-        }.onFailure { Log.w(TAG, "exit info unavailable", it) }
+            crashes
+        }.onFailure { Log.w(TAG, "exit info unavailable", it) }.getOrDefault(0)
     }
 
+    /** A crash signal of the native code itself (not a kill): SIGILL 4, SIGBUS 7, SIGSEGV 11. */
+    internal fun isNativeCrash(reason: Int, status: Int) =
+        reason == ApplicationExitInfo.REASON_SIGNALED && status in setOf(4, 7, 11) || reason == ApplicationExitInfo.REASON_CRASH_NATIVE
+
+    /** Writes the record of one exit; false for exits that are not crashes (nothing written). */
     @androidx.annotation.RequiresApi(30)
-    private fun save(dir: File, info: ApplicationExitInfo) {
+    private fun save(dir: File, info: ApplicationExitInfo): Boolean {
         val ts = info.timestamp
         val reason = reasonName(info.reason)
         // User/app-initiated exits (our own idle shutdown kills the process) are not crashes.
-        if (info.reason == ApplicationExitInfo.REASON_EXIT_SELF && info.status == 0) return
-        if (info.reason == ApplicationExitInfo.REASON_USER_REQUESTED) return
+        if (info.reason == ApplicationExitInfo.REASON_EXIT_SELF && info.status == 0) return false
+        if (info.reason == ApplicationExitInfo.REASON_USER_REQUESTED) return false
         // EngineService kills its own process after Node exits normally; it leaves this marker first.
-        File(dir, ".clean-${info.pid}").let { if (it.exists()) { it.delete(); return } }
+        File(dir, ".clean-${info.pid}").let { if (it.exists()) { it.delete(); return false } }
         val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(ts))
         val text = StringBuilder()
         text.append("$time  $reason").append(if (info.reason == ApplicationExitInfo.REASON_SIGNALED || info.reason == ApplicationExitInfo.REASON_CRASH_NATIVE) " (signal ${info.status})" else " (status ${info.status})")
@@ -104,12 +114,48 @@ object EngineDiagnostics {
                 text.append('\n').append(String(trace, Charsets.UTF_8).take(64_000))
             }
         }
+        if (trace == null || trace.isEmpty()) {
+            // A SIGSEGV that never reached the tombstone writer leaves nothing to decode (#66):
+            // the threadtime crash/main buffers are then the only evidence of where it died.
+            val crashLog = crashSlice(info.pid)
+            if (crashLog.isEmpty()) {
+                text.append("\nno system trace and no logcat lines for pid ").append(info.pid).append('\n')
+            } else {
+                File(dir, "logcat-$ts.txt").writeText(crashLog)
+                text.append("\nno system trace; logcat-$ts.txt:")
+                crashLog.lineSequence().take(20).forEach { text.append("\n  ").append(it) }
+                text.append('\n')
+            }
+        }
         File(dir, "exit-$ts.txt").writeText(text.toString())
         Log.w(TAG, "engine exit recorded: ${text.lineSequence().first()}")
+        return true
     }
 
+
+    /** `logcat -d` crash + main buffers, filtered to one (already dead) pid. Best effort, bounded. */
+    private fun crashSlice(pid: Int): String = runCatching {
+        val process = ProcessBuilder("logcat", "-b", "crash", "-b", "main", "-d", "-v", "threadtime")
+            .redirectErrorStream(true).start()
+        val raw = process.inputStream.bufferedReader().use { it.readText() }
+        process.waitFor()
+        filterLogcatForPid(raw, pid)
+    }.onFailure { Log.w(TAG, "logcat slice unavailable", it) }.getOrDefault("")
+
+    /**
+     * The lines `logcat -v threadtime` logged for [pid], last [maxLines] kept. threadtime is
+     * `MM-DD HH:MM:SS.mmm PID TID LEVEL TAG: message`, so the third whitespace-separated column is
+     * the pid; `--pid` cannot be used because the process is already gone by the time we read.
+     */
+    internal fun filterLogcatForPid(raw: String, pid: Int, maxLines: Int = 200): String =
+        raw.lineSequence()
+            .filter { line -> line.trim().split(WHITESPACE).getOrNull(2) == pid.toString() }
+            .toList().takeLast(maxLines).joinToString("\n")
+
+    private val WHITESPACE = Regex("\\s+")
+
     private fun prune(dir: File) {
-        listOf("exit-" to ".txt", "tombstone-" to ".pb").forEach { (prefix, suffix) ->
+        listOf("exit-" to ".txt", "tombstone-" to ".pb", "logcat-" to ".txt").forEach { (prefix, suffix) ->
             dir.listFiles { f -> f.name.startsWith(prefix) && f.name.endsWith(suffix) }.orEmpty()
                 .sortedByDescending { it.name }.drop(KEEP_EXITS).forEach { it.delete() }
         }
