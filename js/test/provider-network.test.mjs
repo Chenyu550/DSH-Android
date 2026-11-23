@@ -4,7 +4,9 @@
 //   DSH_STAGE_NM=<WORK_DIR>/stage/node_modules node --test js/test/provider-network.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createServer } from 'node:net'
+import { connect as netConnect, createServer } from 'node:net'
+import { createServer as createHttpServer, request as httpRequest } from 'node:http'
+import { networkInterfaces } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -29,7 +31,8 @@ test('AggregateError (happy eyeballs) uses the first coded attempt', () => {
     coded('connect ETIMEDOUT 10.0.0.2:443', { code: 'ETIMEDOUT', address: '10.0.0.2', port: 443 }),
     coded('connect ENETUNREACH ::1', { code: 'ENETUNREACH' }),
   ], ''), { code: 'ETIMEDOUT' })
-  assert.equal(describeTransportCause(fetchFailed(agg), 'https://gw.example:8443/v1'), 'ETIMEDOUT gw.example:8443 (connect timed out)')
+  // The address actually tried is named when it is not the endpoint's own (patch 24).
+  assert.equal(describeTransportCause(fetchFailed(agg), 'https://gw.example:8443/v1'), 'ETIMEDOUT gw.example:8443 at 10.0.0.2:443 (connect timed out)')
 })
 
 test('target falls back to the cause address (IPv6 bracketed) and default ports', () => {
@@ -98,5 +101,62 @@ test('patch 15: Android exclusion globs bypass the proxy', async () => {
     await dispose()
     for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]
     Object.assign(process.env, saved)
+  }
+})
+
+// #75 (patch 24): a proxy nothing listens on (a capture / VPN app's local proxy left configured after
+// it stopped) is skipped like Android's HTTP stack does, instead of failing every request.
+test('patch 24: refused proxy named in the cause', () => {
+  const saved = process.env.HTTPS_PROXY
+  process.env.HTTPS_PROXY = 'http://127.0.0.1:9000'
+  try {
+    const refused = fetchFailed(coded('connect ECONNREFUSED 127.0.0.1:9000', { code: 'ECONNREFUSED', address: '127.0.0.1', port: 9000 }))
+    assert.equal(describeTransportCause(refused, 'https://ollama.com/v1'), 'ECONNREFUSED ollama.com:443 via proxy 127.0.0.1:9000 (connection refused)')
+  } finally { if (saved === undefined) delete process.env.HTTPS_PROXY; else process.env.HTTPS_PROXY = saved }
+})
+
+const lanAddress = Object.values(networkInterfaces()).flat().find(a => a?.family === 'IPv4' && !a.internal)?.address
+
+test('patch 24: a dead proxy falls back to a direct connection; a live one is used', { skip: lanAddress === undefined && 'no non-loopback IPv4 address' }, async () => {
+  const target = createHttpServer((_req, res) => res.end('direct'))
+  await new Promise(r => target.listen(0, '0.0.0.0', r))
+  const url = `http://${lanAddress}:${target.address().port}/`
+  const dead = createServer(); await new Promise(r => dead.listen(0, '127.0.0.1', r))
+  const deadPort = dead.address().port; await new Promise(r => dead.close(r))
+  // A live proxy: absolute-form requests are answered by it, CONNECT tunnels are relayed.
+  let proxied = 0
+  const live = createHttpServer((req, res) => {
+    proxied += 1
+    const up = httpRequest(req.url, { method: req.method, headers: req.headers }, r => { res.writeHead(r.statusCode, r.headers); r.pipe(res) })
+    req.pipe(up)
+  })
+  live.on('connect', (req, socket, head) => {
+    proxied += 1
+    const [host, port] = req.url.split(':')
+    const up = netConnect(Number(port), host, () => { socket.write('HTTP/1.1 200 Connection Established\r\n\r\n'); up.write(head); up.pipe(socket); socket.pipe(up) })
+    up.on('error', () => socket.destroy())
+  })
+  await new Promise(r => live.listen(0, '127.0.0.1', r))
+  const saved = { ...process.env }
+  const run = async proxyUrl => {
+    const env = new Map(Object.entries({ HTTPS_PROXY: proxyUrl, HTTP_PROXY: proxyUrl }).map(([k, v]) => [k, { value: v }]))
+    const dispose = await proxy.installProxyFromEnvironment(env, () => {})
+    try {
+      assert.equal(proxy.proxyRouteFor(new URL(url)).proxied, true)
+      return await (await fetch(url)).text()
+    } finally {
+      await dispose()
+      for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]
+      Object.assign(process.env, saved)
+    }
+  }
+  try {
+    assert.equal(await run(`http://127.0.0.1:${deadPort}`), 'direct')
+    assert.equal(proxied, 0)
+    assert.equal(await run(`http://127.0.0.1:${live.address().port}`), 'direct')
+    assert.ok(proxied > 0, 'the live proxy carried the request')
+  } finally {
+    live.closeAllConnections(); target.closeAllConnections()
+    await new Promise(r => live.close(r)); await new Promise(r => target.close(r))
   }
 })

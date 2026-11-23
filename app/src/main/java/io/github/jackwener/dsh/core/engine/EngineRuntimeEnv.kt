@@ -24,7 +24,8 @@ import java.security.cert.X509Certificate
  *    simply miss and repopulate.
  *  - NODE_OPTIONS: app options + [RUNTIME_NODE_OPTIONS], de-duplicated by flag name.
  *  - HTTP(S)_PROXY / NO_PROXY: Android's proxy for the default network ([EngineProxy]), read once
- *    per engine start; with one, argv also gets `--use-env-proxy`.
+ *    per engine start (EngineManager restarts an idle engine when it changes); with one, argv also
+ *    gets `--use-env-proxy`.
  * Flags Node refuses in NODE_OPTIONS (--expose-internals) go in argv: [NODE_ARGV].
  */
 object EngineRuntimeEnv {
@@ -70,7 +71,8 @@ object EngineRuntimeEnv {
         CaBundle.export(context)?.let { vars["NODE_EXTRA_CA_CERTS"] = it.path }
         vars["NODE_COMPILE_CACHE"] = File(context.cacheDir, "node-compile-cache").apply { mkdirs() }.path
         mergeNodeOptions(vars["NODE_OPTIONS"], RUNTIME_NODE_OPTIONS).takeIf { it.isNotEmpty() }?.let { vars["NODE_OPTIONS"] = it }
-        val proxy = systemProxy(context)?.also { Log.i(TAG, "engine proxy ${it.host}:${it.port}, ${it.exclusions.size} exclusions") }
+        val proxy = systemProxy(context)
+        Log.i(TAG, proxy?.let { "engine proxy ${it.host}:${it.port}, ${it.exclusions.size} exclusions" } ?: "no engine proxy (none, or PAC, which Node cannot evaluate)")
         val proxyEnv = EngineProxy.env(proxy)
         EngineProxy.ENV_NAMES.forEach { if (it !in proxyEnv) runCatching { Os.unsetenv(it) } }
         vars += proxyEnv
@@ -81,14 +83,12 @@ object EngineRuntimeEnv {
     /**
      * The proxy HttpURLConnection would use: [ConnectivityManager.getDefaultProxy] (Wi-Fi, global
      * or VPN proxy of the default network), else the `http(s).proxyHost` properties Android sets in
-     * every app process. A PAC proxy is skipped: Node has no PAC evaluator.
+     * every app process. A PAC proxy is skipped: Node has no PAC evaluator. Also read by
+     * EngineManager, which restarts an idle engine when it changes.
      */
-    private fun systemProxy(context: Context): EngineProxy.Proxy? = runCatching {
+    fun systemProxy(context: Context): EngineProxy.Proxy? = runCatching {
         val info = context.getSystemService(ConnectivityManager::class.java)?.defaultProxy
-        if (info != null && info.pacFileUrl != null && info.pacFileUrl != Uri.EMPTY) {
-            Log.i(TAG, "PAC proxy configured; not applied to the engine (requests go direct)")
-            return null
-        }
+        if (info != null && info.pacFileUrl != null && info.pacFileUrl != Uri.EMPTY) return null
         if (info != null && !info.host.isNullOrBlank() && info.port > 0)
             return EngineProxy.Proxy(info.host, info.port, info.exclusionList.orEmpty().toList())
         val host = System.getProperty("https.proxyHost")?.takeIf { it.isNotBlank() } ?: System.getProperty("http.proxyHost")?.takeIf { it.isNotBlank() } ?: return null

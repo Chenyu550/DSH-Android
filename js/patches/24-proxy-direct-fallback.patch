@@ -1,0 +1,117 @@
+DSH-Android patch 24: a proxy that refuses connections is skipped (dsh-http-proxy), and the address a
+transport failure actually hit is named (vendored @snnh/dsh-llm-service-lite 0.2.1). Applies on top
+of 15 (dsh-http-proxy) and 14, 16, 17, 18, 22, 23 (llm-service-lite).
+
+The app hands the engine Android's proxy for the default network (EngineProxy). Android's own HTTP
+stack treats that proxy as a preference: when it refuses the connection, it connects directly. undici's
+ProxyAgent has no fallback. A capture or VPN app's local proxy (Reqable, HttpCanary: 127.0.0.1:port)
+left in the Wi-Fi settings after the app stopped therefore failed every engine request with
+ECONNREFUSED while the app's model test, through HttpURLConnection, passed (#75); and the message
+named the endpoint (`ECONNREFUSED ollama.com:443`), not the dead proxy. Now:
+ - dsh-http-proxy's global dispatcher checks that a proxy accepts TCP connections (≤ 1.5 s, the
+   answer trusted for 30 s) before routing through it, and connects directly while it does not;
+   transitions are logged without credentials;
+ - llm-service-lite's transport cause appends the address that failed when it is not the endpoint's
+   own: `ECONNREFUSED ollama.com:443 via proxy 127.0.0.1:9000 (connection refused)`, or
+   `… at <resolved address>` (e.g. a DNS answer of 127.0.0.1).
+
+--- a/@deepseek-ai/dsh-http-proxy/lib/index.js
++++ b/@deepseek-ai/dsh-http-proxy/lib/index.js
+@@ -394,8 +394,8 @@
+ * @returns the dispatcher to install, owning every per-origin agent its factory created.
+ */
+ async function createPolicyDispatcher(policy) {
+-	const { Agent, Pool, ProxyAgent } = await import("undici");
+-	return new Agent({ factory(origin, options) {
++	const { Agent, Dispatcher, Pool, ProxyAgent } = await import("undici");
++	const routed = new Agent({ factory(origin, options) {
+ 		const passed = options;
+ 		const proxy = proxyForUrl(policy, new URL(origin.toString()));
+ 		if (proxy !== void 0) return new ProxyAgent({
+@@ -404,6 +404,68 @@
+ 		});
+ 		return new Pool(origin, passed);
+ 	} });
++	// DSH-Android (patch 24): a proxy nothing listens on is skipped, as Android's own HTTP stack does
++	// (it tries the system proxy, then a direct connection). A capture or VPN app's local proxy left
++	// configured after the app stopped otherwise fails every request with ECONNREFUSED, while the
++	// app's own requests (the model test) still work.
++	const { connect } = await import("node:net");
++	const direct = new Agent();
++	const health = /* @__PURE__ */ new Map();
++	const probe = (proxy) => new Promise((resolve) => {
++		const url = new URL(proxy);
++		const socket = connect({
++			host: url.hostname.replace(/^\[|\]$/gu, ""),
++			port: Number(url.port || (url.protocol === "https:" ? 443 : 80))
++		});
++		const done = (up) => {
++			socket.destroy();
++			resolve(up);
++		};
++		socket.setTimeout(PROXY_PROBE_TIMEOUT_MS, () => done(false));
++		socket.once("connect", () => done(true));
++		socket.once("error", () => done(false));
++	});
++	/** Whether `proxy` accepts connections, re-checked at most every {@link PROXY_PROBE_TTL_MS}. */
++	const reachable = (proxy) => {
++		const known = health.get(proxy);
++		if (known !== void 0 && known.until > Date.now()) return known.up;
++		if (known?.pending !== void 0) return known.pending;
++		const entry = known ?? { up: void 0, until: 0, pending: void 0 };
++		entry.pending = probe(proxy).then((up) => {
++			if (up !== entry.up && !(up && entry.up === void 0)) console.warn(up ? `dsh-http-proxy: proxy ${redactProxy(proxy)} reachable again; using it` : `dsh-http-proxy: proxy ${redactProxy(proxy)} refuses connections; connecting directly`);
++			entry.up = up;
++			entry.until = Date.now() + PROXY_PROBE_TTL_MS;
++			entry.pending = void 0;
++			return up;
++		});
++		health.set(proxy, entry);
++		return entry.pending;
++	};
++	class ProxyOrDirect extends Dispatcher {
++		dispatch(opts, handler) {
++			const proxy = proxyForUrl(policy, new URL(String(opts.origin)));
++			if (proxy === void 0) return routed.dispatch(opts, handler);
++			const up = reachable(proxy);
++			if (typeof up === "boolean") return (up ? routed : direct).dispatch(opts, handler);
++			up.then((ok) => (ok ? routed : direct).dispatch(opts, handler)).catch((error) => handler.onResponseError?.(null, error));
++			return true;
++		}
++		async close() {
++			await Promise.all([routed.close(), direct.close()]);
++		}
++		async destroy(error) {
++			await Promise.all([routed.destroy(error), direct.destroy(error)]);
++		}
++	}
++	return new ProxyOrDirect();
++}
++/** DSH-Android (patch 24): how long a proxy reachability answer is trusted, and how long one check may take. */
++const PROXY_PROBE_TTL_MS = 3e4;
++const PROXY_PROBE_TIMEOUT_MS = 1500;
++/** A proxy URL for a log line, without credentials. */
++function redactProxy(proxy) {
++	const url = new URL(proxy);
++	return `${url.protocol}//${url.host}`;
+ }
+ /**
+ * Route this process's outbound HTTP through `policy`.
+--- a/@snnh/dsh-llm-service-lite/lib/index.js
++++ b/@snnh/dsh-llm-service-lite/lib/index.js
+@@ -2982,6 +2982,15 @@
+ 	const url = typeof baseURL === "string" ? URL.parse(baseURL) : null;
+ 	if (url !== null && url.hostname !== "") target = `${url.hostname}:${url.port || (url.protocol === "https:" ? "443" : "80")}`;
+ 	else if (typeof root?.address === "string") target = `${root.address.includes(":") ? `[${root.address}]` : root.address}${root.port === void 0 ? "" : `:${root.port}`}`;
++	// DSH-Android (patch 24): the address actually refused when it is not the endpoint's own, e.g. the
++	// proxy every request goes through, so "ollama.com:443" is not blamed for a dead local proxy.
++	if (url !== null && url.hostname !== "" && typeof root?.address === "string" && root.port !== void 0 && root.address !== url.hostname.replace(/^\[|\]$/gu, "")) {
++		const at = `${root.address.includes(":") ? `[${root.address}]` : root.address}:${root.port}`;
++		const proxy = URL.parse((url.protocol === "http:" ? process.env.HTTP_PROXY ?? process.env.http_proxy : process.env.HTTPS_PROXY ?? process.env.https_proxy) ?? "");
++		const proxyHost = proxy?.hostname.replace(/^\[|\]$/gu, "") ?? "";
++		const viaProxy = proxy !== null && String(root.port) === (proxy.port || (proxy.protocol === "https:" ? "443" : "80")) && (proxyHost === root.address || !/^[\d.:]+$/u.test(proxyHost));
++		target += viaProxy ? ` via proxy ${at}` : ` at ${at}`;
++	}
+ 	const own = typeof root?.message === "string" ? redactUrls(root.message).replace(/\s+/gu, " ").trim().slice(0, 200) : "";
+ 	// DSH-Android (patch 16): a failure with no coded or described cause still names itself
+ 	// (`TypeError: fetch failed`), so the user never gets a bare host:port and nothing else.

@@ -11,8 +11,10 @@ package io.github.jackwener.dsh.core.engine
  * Android's semantics are mirrored: everything goes through the proxy except the exclusion list.
  * Its globs (`192.168.*`) are matched by js patch 15; `*.example.com` and plain hosts natively.
  * Loopback is always excluded (dsh adds it too; listed here for child processes).
- * A PAC proxy is not applied (logged). The proxy is read at engine start; a change applies on the
- * next start.
+ * A PAC proxy is not applied (logged). The proxy is read at engine start; EngineManager restarts an
+ * idle engine when it changes. Like Android's HTTP stack, a proxy that refuses connections (a capture
+ * or VPN app's local proxy left configured after it stopped, #75) is skipped for a direct connection
+ * (js patch 24), so the engine and the app's own requests (the model test) agree.
  */
 object EngineProxy {
     data class Proxy(val host: String, val port: Int, val exclusions: List<String>)

@@ -13,6 +13,7 @@ current upstream release; the line numbers in our patches are against the versio
 | 18 `llm-lite-route-headers-model-access` | `@snnh/dsh-llm-service-lite` 0.2.1 | snnh/dsh-llm-service-lite | `userAgent` default is ours; the rest no | yes, as 2 PRs (below) |
 | 22 `llm-lite-declared-reasoning` | `@snnh/dsh-llm-service-lite` 0.2.1 | snnh/dsh-llm-service-lite | no | yes, as a semantics question first (below) |
 | 23 `llm-lite-responses-encrypted-reasoning` | `@snnh/dsh-llm-service-lite` 0.2.1 | snnh/dsh-llm-service-lite | no | yes, as is (below) |
+| 24 `proxy-direct-fallback` | `@deepseek-ai/dsh-http-proxy` + `@snnh/dsh-llm-service-lite` | DeepSeek Harness; snnh/dsh-llm-service-lite | the fallback mirrors Android's HTTP stack; the cause text is general | the cause text yes; the fallback as a question (desktop proxies rarely die silently) |
 
 Only patch 15 targets dsh itself. 14, 16, 17 and 18 target the community adapter; dsh's own
 `dsh-llm-deepseek` adapter is not patched. One dsh-side note belongs with 17 (see "dsh core" below).

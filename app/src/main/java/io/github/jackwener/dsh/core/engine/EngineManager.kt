@@ -123,6 +123,8 @@ class EngineManager @Inject constructor(
     @Volatile private var startedTz: String = TimeZone.getDefault().id
     /** DSH_ANDROID_LOCALE the running process got (approval texts, account pages, extension labels follow the app language). */
     @Volatile private var startedLocale: String = Locale.getDefault().toLanguageTag()
+    /** Android's proxy when the running engine started (EngineProxy: its environment is read once, at process start). */
+    @Volatile private var startedProxy: EngineProxy.Proxy? = null
     /** Whether an SDK session was opened in this generation (then a route change needs a restart). */
     @Volatile private var sessionsOpened = false
     private var death: CompletableDeferred<Unit>? = null
@@ -203,6 +205,8 @@ class EngineManager @Inject constructor(
                 TimeZone.getDefault().id != startedTz -> { Log.i(TAG, "time zone changed: restarting engine"); shutdownLocked(); null }
                 // The app language changed (设置 → 语言, or the system's per-app language): same, when idle.
                 Locale.getDefault().toLanguageTag() != startedLocale -> { Log.i(TAG, "language changed: restarting engine"); shutdownLocked(); null }
+                // The system / Wi-Fi / VPN proxy changed (#75): the engine routes by the one it started with.
+                EngineRuntimeEnv.systemProxy(context) != startedProxy -> { Log.i(TAG, "proxy changed: restarting engine"); shutdownLocked(); null }
                 // Providers / keys / web search changed: only a new process reads them.
                 profileFingerprint(st, hasKey) != activeFingerprint -> { Log.i(TAG, "model providers changed: restarting engine"); shutdownLocked(); null }
                 want == activeRoute -> peer
@@ -509,6 +513,7 @@ class EngineManager @Inject constructor(
     private fun environment(apiKey: String?, providerKeys: Map<String, String>) = Bundle().apply {
         startedTz = TimeZone.getDefault().id
         startedLocale = Locale.getDefault().toLanguageTag()
+        startedProxy = EngineRuntimeEnv.systemProxy(context)
         val files = context.filesDir
         putString("DSH_HOME", File(files, "dsh-home").path)
         putString("HOME", File(files, "home").path)
