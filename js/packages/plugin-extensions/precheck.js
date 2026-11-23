@@ -14,6 +14,14 @@ export const ANDROID_UNAVAILABLE_SERVICES = Object.freeze([
 ])
 
 /**
+ * Plugins known to need those services (#76: marked in 扩展 before anyone downloads them), by
+ * package name; installs that fail the gate add theirs to extensions-state.json `webOnly`.
+ */
+export const KNOWN_WEB_ONLY = Object.freeze({
+  'ds-bot': ['sessionController', 'workspaceRegistry', 'connection'],
+})
+
+/**
  * @param modules [{ rowId, specifier, from }] — `from` is the file URL imports resolve against
  * @param fallbackFrom file URL of the engine's install anchor (peers resolve there)
  * @returns { rows: [{ rowId, inject: string[], error? }], unavailable: string[] } or { skipped: reason }

@@ -38,6 +38,8 @@
     <string name="ext_market_error">Couldn\'t read the index: %s</string>
     <string name="ext_market_error_list">Couldn\'t read the index list</string>
     <string name="ext_market_incompatible">Needs a newer app</string>
+    <string name="ext_market_web_only">Web app only</string>
+    <string name="ext_market_web_only_detail">Needs services only the DSH web app has (%1$s); the phone app has none of them, so it cannot run here.</string>
     <string name="ext_status_active">Running</string>
     <string name="ext_count_tools">%d tools</string>
     <string name="ext_count_skills">%d skills</string>

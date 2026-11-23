@@ -18,6 +18,7 @@ import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync 
 import { basename, dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { DEFAULT_INDEXES, bundlesOf, installedOf, isThirdParty, migrateIndexes, settleSafeMode, registryPlanFromEnv, paths as pathsOf, preparePnpmProject, readManifest, readState, removeTree, writeState } from './boot.js'
+import { KNOWN_WEB_ONLY } from './precheck.js'
 import { fromManagerResult, labelsOf, localizedString, localizedText, marketError, userError } from './errors.js'
 import { fetchFirst, fetchLinkJson, fetchMirrored, fetchText, npmFileUrls, usePreferences } from './fetch-sources.js'
 import { skillScripts } from './skills.js'
@@ -401,6 +402,8 @@ export function apply(ctx) {
       if (check.skipped) log('warn', `service precheck skipped for ${bundle}: ${check.skipped}`)
       else if (check.unavailable.length > 0) {
         await rollback(bundle, previous)
+        state.webOnly[bundle] = { services: check.unavailable }
+        save()
         return failed(userError('needs-web-services', { name: bundle, services: check.unavailable, labels: labelsOf(check.unavailable) }))
       }
     } catch (error) { log('warn', `service precheck failed for ${bundle}: ${error?.message ?? error}`) }
@@ -473,6 +476,14 @@ export function apply(ctx) {
   let mcpApi
   const mcp = async () => mcpApi ??= (await import('./mcp.js')).createMcp({ paths: p, registries: plan })
   const skillError = error => error?.code ? userError(error.code, error.params) : userError('unknown', { reason: firstLine(error) })
+  /**
+   * A market entry marked `webOnly: { services, labels }` when the plugin needs services only the DSH
+   * web app has (#76): known ones, and every one whose install here already failed that gate.
+   */
+  const withWebOnly = entry => {
+    const services = state.webOnly[entry?.name]?.services ?? KNOWN_WEB_ONLY[entry?.name]
+    return Array.isArray(services) && services.length > 0 ? { ...entry, webOnly: { services, labels: labelsOf(services) } } : entry
+  }
   /** dsh's skill catalog (name, path, source), or [] while it cannot be read. */
   const listedSkills = async () => { try { return await ctx.get('skills')?.list({}) ?? [] } catch { return [] } }
   /** The directory of a skill in an `.agents/skills/` root inside the app's HOME (the user's own installs), else undefined. */
@@ -753,12 +764,13 @@ export function apply(ctx) {
     'android/ext/market/search': async params => {
       const url = need(params, 'url')
       try {
-        return await (await market()).search(url, { text: params.query ?? params.text ?? '', offset: params.offset ?? 0, limit: params.limit ?? 30, ...params.refresh ? { refresh: true } : {}, ...params.category ? { category: params.category } : {}, ...params.sort ? { sort: params.sort } : {} })
+        const result = await (await market()).search(url, { text: params.query ?? params.text ?? '', offset: params.offset ?? 0, limit: params.limit ?? 30, ...params.refresh ? { refresh: true } : {}, ...params.category ? { category: params.category } : {}, ...params.sort ? { sort: params.sort } : {} })
+        return Array.isArray(result?.entries) ? { ...result, entries: result.entries.map(withWebOnly) } : result
       } catch (error) { return { error: marketError(error, url) } }
     },
     'android/ext/market/entry': async params => {
       const url = need(params, 'url')
-      try { return { entry: await (await market()).entry(url, need(params, 'name')) ?? null } } catch (error) { return { error: marketError(error, url) } }
+      try { const entry = await (await market()).entry(url, need(params, 'name')); return { entry: entry ? withWebOnly(entry) : null } } catch (error) { return { error: marketError(error, url) } }
     },
     // skills
     'android/ext/skills/list': async () => {

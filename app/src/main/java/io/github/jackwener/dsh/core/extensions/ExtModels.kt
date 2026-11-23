@@ -399,6 +399,8 @@ data class MarketPluginMetadata(
     val sortKeys: Map<String, Double> = emptyMap(),
 )
 
+@Serializable data class MarketWebOnly(val services: List<String> = emptyList(), val labels: String = "")
+
 @Serializable data class MarketInstallation(val status: String = "not-installed", val installedVersion: String? = null)
 
 /** One index plugin; with search results also its default version and installation status. */
@@ -416,6 +418,8 @@ data class MarketEntry(
     val versions: List<MarketVersion> = emptyList(),
     val defaultVersion: String? = null,
     val installation: MarketInstallation = MarketInstallation(),
+    /** Needs services only the DSH web app has (#76; the engine knows it, or an install here failed on it): not installable. */
+    val webOnly: MarketWebOnly? = null,
 ) {
     fun title(language: String): String = title?.get(language)?.takeIf { it.isNotBlank() } ?: name
     /** The version a tap on 安装 installs: the engine's default, else the recorded `latest` (never `name@latest`). */

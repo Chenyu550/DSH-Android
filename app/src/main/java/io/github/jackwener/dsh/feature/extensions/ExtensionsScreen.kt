@@ -403,6 +403,7 @@ private fun MarketRow(e: MarketEntry, lang: String, installed: Boolean, divider:
         trailing = {
             when {
                 installed -> Tag(stringResource(R.string.ext_installed_tag), Tone.Success)
+                e.webOnly != null -> Tag(stringResource(R.string.ext_market_web_only), Tone.Warn)
                 v == null || !compatible -> Tag(stringResource(R.string.ext_market_incompatible), Tone.Warn)
                 else -> DButton(stringResource(R.string.ext_install), onInstall, variant = BtnVariant.Outline, size = BtnSize.Sm)
             }
