@@ -49,7 +49,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
+import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.elements.MarkdownCheckBox
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.markdownPadding
@@ -91,6 +93,10 @@ fun DshMarkdown(text: String, modifier: Modifier = Modifier, compact: Boolean = 
             table = body.copy(fontSize = 13.sp, lineHeight = 22.sp),
         ),
         padding = markdownPadding(block = if (compact) 2.dp else 6.dp, codeBlock = androidx.compose.foundation.layout.PaddingValues(14.dp, 10.dp)),
+        components = markdownComponents(
+            checkbox = { MarkdownCheckBox(it.content, it.node, it.typography.text) },
+            table = { DshTable(it.content, it.node, it.typography.table) },
+        ),
         modifier = modifier,
     )
 }
