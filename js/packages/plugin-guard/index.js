@@ -17,6 +17,8 @@
 //     unattended automation runs (`auto_…` sessions), whose questions are
 //     answered automatically.
 //  5. dsh runtime warnings/errors (ctx.logger) mirrored to stderr = engine.log.
+//  5b. Read-before-edit across engine restarts (observations.js, #76): `fs/observed` kept as session
+//     records and replayed for files still at the recorded version when a session resumes.
 //  6. Long tasks (continuation.js): a root turn the model ends with open todos (or a claim that it
 //     goes on by itself) continues with a nudge, capped; every turn end records its reason.
 //  7. Model reasoning levels for the app's composer (`android/models/reasoning`, #46): what dsh's
@@ -31,6 +33,7 @@ import { checkCommand, isReadOnlyCommand, refusalText } from './hardline.js'
 import { setupExperience } from './experience.js'
 import { setupContinuation } from './continuation.js'
 import { setupSessionModel } from './session-model.js'
+import { setupObservations } from './observations.js'
 
 export { checkCommand, isReadOnlyCommand, refusalText } from './hardline.js'
 
@@ -509,6 +512,8 @@ export function apply(ctx, config = {}) {
   })
   // ── 3b. App 经验库: routes and post-turn reflection (experience.js) ──────────
   setupExperience(ctx, { bridge, rootOf: agent => rootSessionId(ctx, agent), meter, withinBudget: root => overBudget(root) === undefined, log })
+  // ── 5b. Read-before-edit survives engine restarts (observations.js, #76) ──
+  setupObservations(ctx, { log: (level, message) => log(ctx, level, message), ...config.appendRecord === undefined ? {} : { appendRecord: config.appendRecord } })
   // ── 6. Long tasks: continuation with open todos, explicit turn-end reasons ──
   const continuation = setupContinuation(ctx, { log, ...config.appendRecord === undefined ? {} : { appendRecord: config.appendRecord } })
   ctx.on('agent/pre-step', async (input, next) => {

@@ -178,6 +178,7 @@ grep -q '"@dsh-android/bundle-android"' "$NM/@deepseek-ai/dsh-app-boot/lib/index
 grep -q 'sdkExtensions' "$NM/@deepseek-ai/dsh-sdk-jsonrpc-server/lib/index.js" || die "SDK extension patch missing"
 grep -q 'expose-internals' "$NM/node-addon-require-builtin/lib/index.js" || die "require-builtin patch missing"
 grep -q 'promptTimeZone' "$NM/@deepseek-ai/dsh-sdk-jsonrpc-server/lib/index.js" || die "SDK prompt time-zone patch missing"
+grep -q '__dshLinkFallbackCodes' "$NM/@deepseek-ai/dsh-fs-local/lib/index.js" || die "fs-local hard-link fallback (patch 05) missing"
 [[ -f "$NM/@deepseek-ai/dsh-time-context/package.json" && -f "$NM/@deepseek-ai/dsh-tool-ask-user/package.json" ]] || die "time-context / ask-user packages missing"
 [[ ! -e "$NM/@earendil-works/pi-ai" && ! -e "$NM/openai" ]] || die "provider SDK prune failed"
 [[ -f "$NM/@img/sharp-wasm32/package.json" ]] || die "sharp wasm build missing"
