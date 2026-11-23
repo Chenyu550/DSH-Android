@@ -720,6 +720,7 @@
     <string name="prov_add_model">手动输入模型 ID</string>
     <string name="prov_add_model_btn">添加</string>
     <string name="prov_delete">删除服务商</string>
+    <string name="prov_delete_confirm">删除服务商「%1$s」？它的地址、密钥、请求头和所有模型设置会一起删除。</string>
     <string name="prov_err_url">请填写 https:// 或 http:// 开头的接口地址</string>
     <string name="prov_err_key">请填写 API Key</string>
     <string name="prov_err_models">至少勾选一个模型</string>
@@ -732,6 +733,7 @@
     <string name="prov_model_missing">接口未返回</string>
     <string name="prov_model_limits">设置该模型的上下文与输出</string>
     <string name="prov_model_limits_hint">仅对该模型生效，留空则沿用上方设置 / 接口返回值 / 默认值</string>
+    <string name="prov_model_remove">删除这个模型</string>
     <string name="prov_images">图片输入</string>
     <string name="prov_images_on">支持图片</string>
     <string name="prov_images_off">仅文本</string>

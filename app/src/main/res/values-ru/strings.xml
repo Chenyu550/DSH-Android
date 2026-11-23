@@ -717,6 +717,7 @@
     <string name="prov_add_model">Ввести ID модели вручную</string>
     <string name="prov_add_model_btn">Добавить</string>
     <string name="prov_delete">Удалить провайдера</string>
+    <string name="prov_delete_confirm">Удалить провайдера «%1$s»? Вместе с ним удалятся адрес, ключ, заголовки и все настройки моделей.</string>
     <string name="prov_err_url">Укажи адрес интерфейса, начиная с https:// или http://</string>
     <string name="prov_err_key">Укажи API Key</string>
     <string name="prov_err_models">Отметь хотя бы одну модель</string>
@@ -729,6 +730,7 @@
     <string name="prov_model_missing">Нет в ответе</string>
     <string name="prov_model_limits">Настроить контекст и вывод для этой модели</string>
     <string name="prov_model_limits_hint">Действует только для этой модели; если оставить пусто — берётся настройка выше / ответ интерфейса / значение по умолчанию</string>
+    <string name="prov_model_remove">Удалить эту модель</string>
     <string name="prov_images">Ввод изображений</string>
     <string name="prov_images_on">Поддерживает изображения</string>
     <string name="prov_images_off">Только текст</string>

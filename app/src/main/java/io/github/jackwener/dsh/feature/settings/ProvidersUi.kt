@@ -37,6 +37,7 @@ import io.github.jackwener.dsh.core.designsystem.BtnSize
 import io.github.jackwener.dsh.core.designsystem.BtnVariant
 import io.github.jackwener.dsh.core.designsystem.DButton
 import io.github.jackwener.dsh.core.designsystem.DCheckbox
+import io.github.jackwener.dsh.core.designsystem.DDialog
 import io.github.jackwener.dsh.core.designsystem.DIcon
 import io.github.jackwener.dsh.core.designsystem.DInput
 import io.github.jackwener.dsh.core.designsystem.DSwitch
@@ -279,6 +280,7 @@ private fun ProviderEditor(vm: SettingsViewModel, existing: ProviderConfig?, pre
     var verifiedFor by remember { mutableStateOf(existing?.let { endpointKey(it.api, it.baseUrl, "") }) }
     // A model that passed 测试 and becomes the main model on 保存 (a new provider, or the current main route).
     var pendingMain by remember { mutableStateOf<String?>(null) }
+    var confirmDelete by remember { mutableStateOf(false) }
     val current = existing
     val needsKey = !preset.keyOptional && current?.hasKey != true
     // 高级设置: extra request headers and the per-conversation session header (js patch 18).
@@ -288,6 +290,17 @@ private fun ProviderEditor(vm: SettingsViewModel, existing: ProviderConfig?, pre
     fun sessionHeaderOrNull() = sessionHeader.trim().ifEmpty { null }
     fun headersValid() = headerRows.all { r -> r.name.isBlank() || (isUsableHeaderName(r.name.trim()) && isUsableHeaderValue(r.value)) } &&
         (sessionHeader.isBlank() || isUsableHeaderName(sessionHeader.trim()))
+
+    /**
+     * Removes one model from this provider (#64) with everything kept for it: its overrides, listing
+     * values and test state. Applied on 保存 like any edit; a later listing offers it again unchecked.
+     */
+    fun forget(m: String) {
+        offered.remove(m); selected.remove(m); manual.remove(m); missing.remove(m)
+        overrides.remove(m); imageOverrides.remove(m); reasoningDecls.remove(m); detected.remove(m); verified.remove(m)
+        if (editing == m) editing = null
+        if (pendingMain == m) pendingMain = null
+    }
 
     fun applyListing(fetched: FetchedModels<RemoteModel>) {
         val list = fetched.models
@@ -479,6 +492,8 @@ private fun ProviderEditor(vm: SettingsViewModel, existing: ProviderConfig?, pre
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconBtn(R.drawable.dsw_edit_outline, { editing = if (editing == m) null else m }, size = 32.dp, iconSize = 14.dp,
                             tint = if (m in overrides || m in imageOverrides || m in reasoningDecls) c.link else c.labelTertiary, contentDescription = stringResource(R.string.prov_model_limits))
+                        IconBtn(R.drawable.dsw_trash_outline, { forget(m) }, size = 32.dp, iconSize = 14.dp, tint = c.labelTertiary,
+                            contentDescription = stringResource(R.string.prov_model_remove))
                         DCheckbox(on, { if (it) selected.add(m) else selected.remove(m) })
                     }
                 })
@@ -519,6 +534,10 @@ private fun ProviderEditor(vm: SettingsViewModel, existing: ProviderConfig?, pre
         }
     }
 
+    if (confirmDelete && current != null) DDialog({ confirmDelete = false }, stringResource(R.string.prov_delete), buttons = {
+        DButton(stringResource(R.string.cancel), { confirmDelete = false }, variant = BtnVariant.Outline)
+        DButton(stringResource(R.string.delete), { confirmDelete = false; vm.deleteProvider(current); onDone() }, variant = BtnVariant.Danger)
+    }) { Text(stringResource(R.string.prov_delete_confirm, current.name), style = DshType.s14) }
     error?.let { Text(stringResource(it), Modifier.padding(start = 4.dp, top = 12.dp), style = DshType.xs13, color = c.error) }
     testing?.let { t ->
         Row(Modifier.padding(start = 4.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -527,7 +546,7 @@ private fun ProviderEditor(vm: SettingsViewModel, existing: ProviderConfig?, pre
     }
     result?.let { (ok, text) -> Text(text, Modifier.padding(start = 4.dp, top = 12.dp), style = DshType.xs13, color = if (ok) c.labelSecondary else c.error) }
     Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
-        if (current != null) DButton(stringResource(R.string.prov_delete), { vm.deleteProvider(current); onDone() }, variant = BtnVariant.Danger, size = BtnSize.Sm)
+        if (current != null) DButton(stringResource(R.string.prov_delete), { confirmDelete = true }, variant = BtnVariant.Danger, size = BtnSize.Sm)
         Spacer(Modifier.weight(1f))
         DButton(stringResource(R.string.cancel), onDone, variant = BtnVariant.Outline, size = BtnSize.Sm)
         DButton(stringResource(R.string.prov_test), {

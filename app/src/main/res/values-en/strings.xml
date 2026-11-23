@@ -720,6 +720,7 @@
     <string name="prov_add_model">Type a model ID</string>
     <string name="prov_add_model_btn">Add</string>
     <string name="prov_delete">Delete provider</string>
+    <string name="prov_delete_confirm">Delete provider “%1$s”? Its address, key, headers and every model setting go with it.</string>
     <string name="prov_err_url">Enter a base URL starting with https:// or http://</string>
     <string name="prov_err_key">Enter the API key</string>
     <string name="prov_err_models">Check at least one model</string>
@@ -732,6 +733,7 @@
     <string name="prov_model_missing">Not returned by endpoint</string>
     <string name="prov_model_limits">Set this model\'s context and output</string>
     <string name="prov_model_limits_hint">This model only; blank falls back to the setting above / endpoint value / default</string>
+    <string name="prov_model_remove">Remove this model</string>
     <string name="prov_images">Image input</string>
     <string name="prov_images_on">Images</string>
     <string name="prov_images_off">Text only</string>
