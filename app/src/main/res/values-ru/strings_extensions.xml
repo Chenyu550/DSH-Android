@@ -57,6 +57,7 @@
     <string name="ext_source_tarball">Ссылка на архив</string>
     <string name="ext_update_to">Обновить до %s</string>
     <string name="ext_update_needs_app">Новая версия %s требует обновить App</string>
+    <string name="ext_update_needs_engine">Версия %1$s требует движок %2$s — дождитесь обновления App</string>
     <string name="ext_uninstall">Удалить</string>
     <string name="ext_uninstall_confirm">Удалить %s? Сохранённые плагином данные останутся.</string>
     <string name="ext_disable">Отключить</string>

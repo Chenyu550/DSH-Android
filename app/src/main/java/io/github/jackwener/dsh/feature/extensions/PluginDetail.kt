@@ -97,7 +97,7 @@ fun PluginDetailPage(vm: ExtensionsViewModel, name: String, onBack: () -> Unit) 
         Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
             p.update?.let { u ->
                 if (u.compatible) DButton(stringResource(R.string.ext_update_to, u.version), { vm.update(name, u.version) }, size = BtnSize.Sm, enabled = name !in busy)
-                else Text(stringResource(R.string.ext_update_needs_app, u.version), Modifier.weight(1f), style = DshType.xxs12, color = c.labelTertiary)
+                else Text(updateBlocked(u), Modifier.weight(1f), style = DshType.xxs12, color = c.labelTertiary)
             }
             DButton(stringResource(R.string.ext_uninstall), { confirmRemove = true }, variant = BtnVariant.Danger, size = BtnSize.Sm, enabled = name !in busy)
         }

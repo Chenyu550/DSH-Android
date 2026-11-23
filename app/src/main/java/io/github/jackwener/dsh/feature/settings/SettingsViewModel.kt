@@ -190,6 +190,8 @@ class SettingsViewModel @Inject constructor(
     fun setBallStatus(on: Boolean) = viewModelScope.launch { repo.setBallStatus(on) }
     fun setLimits(daily: Long, session: Long) = viewModelScope.launch { repo.setLimits(daily, session) }
     fun setEngineNodeOptions(raw: String) = viewModelScope.launch { repo.setEngineNodeOptions(EngineRuntimeEnv.parseExtraNodeOptions(raw).joinToString(" ")) }
+    /** The bundled engine's version (`engine-version.txt`, e.g. `0.2.1-rc.5-a3222e7ad23`), shown in 关于 (#79). */
+    val engineVersion: String? by lazy { runCatching { context.assets.open("engine-version.txt").bufferedReader().use { it.readText().trim() } }.getOrNull() }
     fun setEngineJitless(on: Boolean) = viewModelScope.launch { repo.setEngineJitless(on) }
     fun toggleNotificationApp(pkg: String) = viewModelScope.launch {
         val cur = settings.value.notificationBlocked
@@ -221,7 +223,7 @@ class SettingsViewModel @Inject constructor(
                 appVersion = io.github.jackwener.dsh.BuildConfig.VERSION_NAME,
                 versionCode = io.github.jackwener.dsh.BuildConfig.VERSION_CODE.toLong(),
                 buildType = io.github.jackwener.dsh.BuildConfig.BUILD_TYPE,
-                engineVersion = runCatching { context.assets.open("engine-version.txt").bufferedReader().use { it.readText().trim() } }.getOrNull(),
+                engineVersion = engineVersion,
                 device = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}",
                 androidRelease = android.os.Build.VERSION.RELEASE,
                 sdk = android.os.Build.VERSION.SDK_INT,

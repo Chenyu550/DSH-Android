@@ -57,6 +57,7 @@
     <string name="ext_source_tarball">压缩包链接</string>
     <string name="ext_update_to">更新到 %s</string>
     <string name="ext_update_needs_app">新版本 %s 需要更新的 App</string>
+    <string name="ext_update_needs_engine">新版本 %1$s 需要引擎 %2$s，等 App 更新</string>
     <string name="ext_uninstall">卸载</string>
     <string name="ext_uninstall_confirm">卸载 %s？插件自己保存的数据不会删除。</string>
     <string name="ext_disable">停用</string>

@@ -57,6 +57,7 @@
     <string name="ext_source_tarball">Tarball link</string>
     <string name="ext_update_to">Update to %s</string>
     <string name="ext_update_needs_app">Version %s needs a newer app</string>
+    <string name="ext_update_needs_engine">Version %1$s needs engine %2$s; wait for an app update</string>
     <string name="ext_uninstall">Uninstall</string>
     <string name="ext_uninstall_confirm">Uninstall %s? Data the plugin saved on its own is kept.</string>
     <string name="ext_disable">Turn off</string>

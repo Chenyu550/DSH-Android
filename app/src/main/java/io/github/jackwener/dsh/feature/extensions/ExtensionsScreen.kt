@@ -358,9 +358,14 @@ internal fun statusLine(p: ExtPlugin): String {
         ExtStatus.SUSPENDED -> stringResource(R.string.ext_status_suspended)
         else -> stringResource(R.string.ext_status_disabled)
     }
-    if (p.update != null && !p.update.compatible) parts += stringResource(R.string.ext_update_needs_app, p.update.version)
+    if (p.update != null && !p.update.compatible) parts += updateBlocked(p.update)
     return parts.joinToString(" · ")
 }
+
+/** Why a newer version cannot be installed (#79): the engine range it asks for, when known. */
+@Composable
+internal fun updateBlocked(u: io.github.jackwener.dsh.core.extensions.ExtUpdate): String =
+    u.range?.let { stringResource(R.string.ext_update_needs_engine, u.version, it) } ?: stringResource(R.string.ext_update_needs_app, u.version)
 
 @Composable
 internal fun sourceLabel(kind: String?): String? = when (kind) {

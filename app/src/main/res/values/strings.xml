@@ -935,4 +935,5 @@
     <string name="engine_jitless">兼容模式（关闭 JIT）</string>
     <string name="engine_jitless_desc">引擎在本机反复闪退（SIGSEGV，常见于 Android 16）时打开：V8 不再即时编译，更稳定但更慢，依赖 WebAssembly 的功能（如图片附件处理）不可用。引擎空闲时重启生效。</string>
     <string name="engine_jitless_auto">%1$s 检测到引擎连续崩溃，已自动开启；关闭后不再自动开启。</string>
+    <string name="engine_version">引擎版本</string>
 </resources>

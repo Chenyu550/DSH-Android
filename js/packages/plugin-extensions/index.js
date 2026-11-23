@@ -14,8 +14,8 @@
 //  - skill import and MCP helpers.
 // Every operation returns plain JSON; failures are UserError objects (errors.js), never throws
 // for an expected refusal.
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { DEFAULT_INDEXES, bundlesOf, installedOf, isThirdParty, migrateIndexes, settleSafeMode, registryPlanFromEnv, paths as pathsOf, preparePnpmProject, readManifest, readState, removeTree, writeState } from './boot.js'
 import { fromManagerResult, labelsOf, localizedString, localizedText, marketError, userError } from './errors.js'
@@ -473,6 +473,15 @@ export function apply(ctx) {
   let mcpApi
   const mcp = async () => mcpApi ??= (await import('./mcp.js')).createMcp({ paths: p, registries: plan })
   const skillError = error => error?.code ? userError(error.code, error.params) : userError('unknown', { reason: firstLine(error) })
+  /** dsh's skill catalog (name, path, source), or [] while it cannot be read. */
+  const listedSkills = async () => { try { return await ctx.get('skills')?.list({}) ?? [] } catch { return [] } }
+  /** The directory of a skill in an `.agents/skills/` root inside the app's HOME (the user's own installs), else undefined. */
+  const agentsSkillDir = path => {
+    const home = process.env.HOME
+    if (!home || !path.startsWith(home + '/')) return undefined
+    const dir = basename(path) === 'SKILL.md' ? dirname(path) : path
+    return dirname(dir).endsWith('/.agents/skills') ? dir : undefined
+  }
 
   const methods = new Map(Object.entries({
     'android/ext/list': () => list(),
@@ -609,7 +618,7 @@ export function apply(ctx) {
       return removeNow(nm)
     }),
     'android/ext/updates': async params => {
-      const { latestOf, compatible, newer } = await import('./updates.js')
+      const { latestOf, compatibility, newer } = await import('./updates.js')
       const fresh = params?.refresh === true || Date.now() - (state.updates.checkedAt ?? 0) > 6 * 3600_000
       const manifest = readManifest(p) ?? {}
       const boot = await appBoot
@@ -620,7 +629,7 @@ export function apply(ctx) {
           if ((state.installedFrom[nm]?.kind ?? 'npm') !== 'npm') continue
           try {
             const l = await latestOf(nm, plan())
-            latest[nm] = { version: l.version, compatible: compatible(l.manifest, exemptions) }
+            latest[nm] = { version: l.version, ...compatibility(l.manifest, exemptions) }
           } catch {}
         }
         state.updates = { checkedAt: Date.now(), latest }
@@ -630,7 +639,7 @@ export function apply(ctx) {
       for (const [nm, l] of Object.entries(state.updates.latest)) {
         let current
         try { current = JSON.parse(readFileSync(join(p.profile, 'node_modules', nm, 'package.json'), 'utf8')).version } catch { continue }
-        if (newer(l.version, current)) updates.push({ name: nm, current, latest: l.version, compatible: l.compatible })
+        if (newer(l.version, current)) updates.push({ name: nm, current, latest: l.version, compatible: l.compatible, ...l.range ? { range: l.range } : {} })
       }
       return { updates, checkedAt: state.updates.checkedAt }
     },
@@ -753,22 +762,27 @@ export function apply(ctx) {
     },
     // skills
     'android/ext/skills/list': async () => {
-      const registry = ctx.get('skills')
-      let listed = []
-      try { listed = await registry?.list({}) ?? [] } catch {}
-      const items = listed.map(s => {
+      const items = (await listedSkills()).map(s => {
         const path = s.path ?? ''
         const imported = path.startsWith(p.skills + '/')
         let scripts = []
         try { if (imported) scripts = skillScripts(join(p.skills, s.name)) } catch {}
-        return { name: s.name, description: localizedString(s.description), scripts, source: imported ? 'imported' : path.includes('/node_modules/') ? 'plugin' : path.includes('/.agents/skills/') ? 'agents' : s.source ?? s.provider ?? 'builtin', enabled: true, removable: imported, ...path ? { path } : {} }
+        return { name: s.name, description: localizedString(s.description), scripts, source: imported ? 'imported' : path.includes('/node_modules/') ? 'plugin' : path.includes('/.agents/skills/') ? 'agents' : s.source ?? s.provider ?? 'builtin', enabled: true, removable: imported || agentsSkillDir(path) !== undefined, ...path ? { path } : {} }
       })
       return { skills: [...items, ...(await skills()).disabled()] }
     },
     'android/ext/skills/preview': async params => { try { return await (await skills()).preview(need(params, 'input')) } catch (error) { return { error: skillError(error) } } },
     'android/ext/skills/import': async params => { try { return (await skills()).import(need(params, 'previewId'), params.names ?? [], params.overwrite ?? []) } catch (error) { return { error: skillError(error) } } },
     'android/ext/skills/setEnabled': async params => { try { return (await skills()).setEnabled(need(params, 'name'), params.enabled === true) } catch (error) { return { error: skillError(error) } } },
-    'android/ext/skills/remove': async params => { try { return (await skills()).remove(need(params, 'name')) } catch (error) { return { error: skillError(error) } } },
+    'android/ext/skills/remove': async params => {
+      try {
+        const name = need(params, 'name')
+        // #76: a skill installed into an `.agents/skills/` root in the app's HOME (by the agent, `npx skills add`) is removable too.
+        const dir = (await listedSkills()).filter(s => s.name === name).map(s => agentsSkillDir(s.path ?? '')).find(d => d !== undefined)
+        if (dir !== undefined) rmSync(dir, { recursive: true, force: true })
+        return (await skills()).remove(name)
+      } catch (error) { return { error: skillError(error) } }
+    },
     // MCP
     'android/ext/mcp/parse': async params => ({ servers: (await import('./mcp.js')).classifyText(need(params, 'text')) }),
     'android/ext/mcp/test': async params => (await mcp()).test(params.config ?? {}, params.timeoutMs ?? 20000),

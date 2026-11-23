@@ -137,7 +137,8 @@ data class ExtRow(
 }
 
 @Serializable data class ExtOverride(val rowId: String, val label: String = rowId)
-@Serializable data class ExtUpdate(val version: String, val compatible: Boolean = true)
+/** A newer version; [range] is the dsh range an incompatible one asks for (#79). */
+@Serializable data class ExtUpdate(val version: String, val compatible: Boolean = true, val range: String? = null)
 @Serializable data class ExtSuspension(
     /** 'crash' | 'safe-mode'. */
     val reason: String,
@@ -307,7 +308,7 @@ data class InspectResult(
 
 @Serializable data class InstallResult(val result: ChangeView)
 
-@Serializable data class UpdateEntry(val name: String, val current: String? = null, val latest: String, val compatible: Boolean = true)
+@Serializable data class UpdateEntry(val name: String, val current: String? = null, val latest: String, val compatible: Boolean = true, val range: String? = null)
 @Serializable data class UpdatesResult(val updates: List<UpdateEntry> = emptyList())
 
 @Serializable data class DetailResult(val markdown: String? = null, val origin: String? = null, val documentId: String? = null)
@@ -467,7 +468,7 @@ data class SkillInfo(
     @Serializable(with = LocalizedStringSerializer::class) val description: String = "",
     /** The engine calls it `source`. */
     @kotlinx.serialization.json.JsonNames("source") val origin: String = SkillOrigin.BUILTIN,
-    /** Imported here: may be switched off or deleted. */
+    /** May be deleted: imported here, or installed into the app's own `.agents/skills/` (#76). */
     val removable: Boolean = false,
     val path: String? = null,
     /** Providing plugin, for [SkillOrigin.PLUGIN]. */
@@ -476,7 +477,8 @@ data class SkillInfo(
     /** Script files that likely won't run on a phone (`*.py`, `*.sh` …). */
     val scripts: List<String> = emptyList(),
 ) {
-    val editable: Boolean get() = removable || origin == SkillOrigin.IMPORTED || origin == SkillOrigin.DISABLED
+    /** Imported here: may be switched off (and deleted). */
+    val editable: Boolean get() = origin == SkillOrigin.IMPORTED || origin == SkillOrigin.DISABLED
 }
 
 @Serializable data class SkillList(val skills: List<SkillInfo> = emptyList())
