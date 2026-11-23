@@ -4,7 +4,9 @@ import android.content.Context
 
 /**
  * The quick panel's recent conversation (floating ball, QS tile, assistant gesture): a summon within
- * [RECENT_MS] of its last use, or while it runs, shows it again instead of a new one.
+ * [RECENT_MS] of its last use, or while it runs, shows it again instead of a new one. The conversation
+ * the app was showing when the user left it counts the same way (#83): minimizing a chat and tapping
+ * the ball continues that chat, not a new one.
  *
  * Deleting the conversation forgets it here ([forget], from SessionStore.delete). Before #57 the panel
  * reopened a deleted conversation as an empty one under the same id: the engine still had that session
@@ -17,6 +19,8 @@ object PanelSession {
     private const val PREFS = "quick_panel"
     private const val KEY_LAST = "last_session"
     private const val KEY_AT = "last_at"
+    private const val KEY_APP = "app_session"
+    private const val KEY_APP_AT = "app_at"
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -35,18 +39,28 @@ object PanelSession {
         if (last(context) == sessionId) prefs(context).edit().putLong(KEY_AT, System.currentTimeMillis()).apply()
     }
 
+    /** The app left the screen showing [sessionId]; null: a new, empty conversation (nothing to continue). */
+    fun leftApp(context: Context, sessionId: String?) {
+        val e = prefs(context).edit()
+        if (sessionId == null) e.remove(KEY_APP).remove(KEY_APP_AT) else e.putString(KEY_APP, sessionId).putLong(KEY_APP_AT, System.currentTimeMillis())
+        e.apply()
+    }
+
     /** [sessionId] was deleted: never reopen it. */
     fun forget(context: Context, sessionId: String) {
-        if (last(context) == sessionId) prefs(context).edit().remove(KEY_LAST).remove(KEY_AT).apply()
+        val p = prefs(context)
+        if (p.getString(KEY_LAST, null) == sessionId) p.edit().remove(KEY_LAST).remove(KEY_AT).apply()
+        if (p.getString(KEY_APP, null) == sessionId) p.edit().remove(KEY_APP).remove(KEY_APP_AT).apply()
     }
 
     /** The conversation a plain summon reopens, or null for a new one ([busy]: whether that one runs or waits for the user). */
-    fun reopen(context: Context, now: Long, busy: (String) -> Boolean): String? =
-        reopenable(last(context), lastAt(context), now, busy)
-
-    /** [reopen]'s rule, pure. */
-    fun reopenable(last: String?, lastAt: Long, now: Long, busy: (String) -> Boolean): String? {
-        val id = last ?: return null
-        return id.takeIf { busy(it) || now - lastAt < RECENT_MS }
+    fun reopen(context: Context, now: Long, busy: (String) -> Boolean): String? {
+        val p = prefs(context)
+        return reopenable(listOf(last(context) to lastAt(context), p.getString(KEY_APP, null) to p.getLong(KEY_APP_AT, 0)), now, busy)
     }
+
+    /** [reopen]'s rule, pure: of the panel's and the app's last conversations (id to when it was left), the latest one still running or recent. */
+    fun reopenable(candidates: List<Pair<String?, Long>>, now: Long, busy: (String) -> Boolean): String? =
+        candidates.mapNotNull { (id, at) -> id?.let { it to at } }.sortedByDescending { it.second }
+            .firstOrNull { (id, at) -> busy(id) || now - at < RECENT_MS }?.first
 }

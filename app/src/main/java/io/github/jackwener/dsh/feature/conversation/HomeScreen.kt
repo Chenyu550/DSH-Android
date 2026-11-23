@@ -43,6 +43,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.jackwener.dsh.R
@@ -75,6 +77,11 @@ fun HomeScreen(vm: HomeViewModel, onSettings: (String?) -> Unit, onAutomation: (
     BackHandler(drawer.isOpen) { scope.launch { drawer.close() } }
     // Back in front with a conversation open (e.g. from the launcher after a background run): it is seen now.
     LifecycleResumeEffect(currentId) { vm.markSeen(); onPauseOrDispose {} }
+    // Leaving the app: the floating ball / quick panel continues this conversation (#83); a new empty one is nothing to continue.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) {
+        io.github.jackwener.dsh.core.session.PanelSession.leftApp(context, vm.id.takeIf { !vm.conversation.value.isEmpty })
+    }
     ModalNavigationDrawer(
         drawerState = drawer,
         scrimColor = c.scrim,

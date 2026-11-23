@@ -125,6 +125,8 @@ class QuickActivity : ComponentActivity() {
                             Spacer(Modifier.width(8.dp))
                             Text(live.title.ifBlank { stringResource(R.string.app_name) }, Modifier.weight(1f), style = DshType.s14m, color = c.labelPrimary,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            // A continued conversation is one tap from a fresh one (not while it runs: #39).
+                            if (!conv.isEmpty && !live.running) IconBtn(R.drawable.dsw_new_chat_outline, { vm.newSession() }, size = 40.dp, contentDescription = stringResource(R.string.new_session))
                             IconBtn(R.drawable.dsw_right_up_outline, { open(vm.id) }, size = 40.dp, contentDescription = stringResource(R.string.open_in_app))
                             IconBtn(R.drawable.dsw_close_outline, { finish() }, size = 40.dp, contentDescription = stringResource(R.string.close))
                         }
@@ -181,8 +183,9 @@ class QuickActivity : ComponentActivity() {
     }
 
     /**
-     * Re-summoning after a dismiss shows the panel's last session if it is still running or was used in the
-     * last 10 minutes ([PanelSession]; a deleted one is forgotten).
+     * A plain summon continues the latest of the panel's last session and the one the app was showing when
+     * the user left it (#83), if it is still running or was left in the last 10 minutes ([PanelSession]; a
+     * deleted one is forgotten).
      */
     private fun reopenRecent(): Boolean {
         val id = PanelSession.reopen(this, System.currentTimeMillis()) { store.status.value[it].let { s -> s != null && s != RowStatus.Idle } } ?: return false
