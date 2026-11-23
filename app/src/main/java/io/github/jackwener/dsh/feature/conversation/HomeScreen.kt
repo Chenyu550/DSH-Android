@@ -35,6 +35,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -134,13 +135,17 @@ private fun ConversationPane(vm: HomeViewModel, onMenu: () -> Unit, onSettings: 
         }
         val agentDisplay by vm.agentDisplay.collectAsStateWithLifecycle()
         agentDisplay?.takeIf { live.running }?.let { AgentPreview(vm, it) }
+        // Each conversation's list position and tail-following outlive 轨迹 and switching away (#76).
+        val streams = rememberSaveableStateHolder()
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            AnimatedContent(Triple(view, empty, live.sessionId), transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "pane") { (v, isEmpty, _) ->
+            AnimatedContent(Triple(view, empty, live.sessionId), transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "pane") { (v, isEmpty, sid) ->
                 when {
                     v == SessionView.Trajectory -> TrajectoryView(vm)
                     isEmpty -> EmptyHero(vm, composer, settings, live, conv, onAutomation, onSettings)
-                    // One list state per session (and per crossfading pane), so positions never leak across sessions.
-                    else -> ChatStream(conv, live, settings.workDetails, rememberLazyListState(), onInspect = vm::inspect, onRetry = vm::retry, onContinue = { vm.continueTask() }, onOpenSettings = { onSettings(it) }, modifier = Modifier.fillMaxSize())
+                    // One list state per session, so positions never leak across sessions.
+                    else -> streams.SaveableStateProvider("chat/$sid") {
+                        ChatStream(conv, live, settings.workDetails, rememberLazyListState(), onInspect = vm::inspect, onRetry = vm::retry, onContinue = { vm.continueTask() }, onOpenSettings = { onSettings(it) }, modifier = Modifier.fillMaxSize())
+                    }
                 }
             }
         }

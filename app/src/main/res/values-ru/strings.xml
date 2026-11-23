@@ -170,8 +170,12 @@
     <string name="notif_not_finished_generic">Задача не завершена, можно продолжить</string>
     <string name="notif_attention">%1$s: %2$s</string>
     <string name="notif_sessions_summary">Новые сообщения в сессиях: %1$d</string>
-    <string name="deep_diving">Глубокое размышление, %1$s ···</string>
-    <string name="deep_diving_activity">%1$s, %2$s ···</string>
+    <string name="run_thinking">Глубокое размышление</string>
+    <string name="run_next_step">Обдумываю следующий шаг (готово: %1$d)</string>
+    <string name="run_tool">%1$s: %2$s</string>
+    <string name="run_elapsed">%1$s ···</string>
+    <string name="user_msg_expand">Показать полностью</string>
+    <string name="user_msg_collapse">Свернуть</string>
     <string name="starting_engine">Запуск движка агента…</string>
     <string name="waiting_unlock">Жду, когда разблокируешь телефон…</string>
     <string name="waiting_network">Жду восстановления сети…</string>

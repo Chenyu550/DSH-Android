@@ -175,6 +175,19 @@ object PresetUi {
     }
 }
 
+/** One entry of the "+" menu / "/" commands; [add]: attaches something (the menu's first section). */
+data class ComposerCommand(val id: String, val label: String, @DrawableRes val icon: Int, val description: String? = null, val add: Boolean = false, val run: () -> Unit)
+
+/** "/" commands in the composer: the draft is "/" plus at most one word; any other text is just text. */
+object SlashCommands {
+    /** The word after a leading "/", or null when the draft is not a command being typed. */
+    fun query(text: String): String? = if (text.startsWith("/") && text.drop(1).none { it.isWhitespace() || it == '/' }) text.drop(1) else null
+
+    /** [id] (English) starts with [query], or the shown [label] contains it. */
+    fun matches(query: String, id: String, label: String): Boolean =
+        query.isEmpty() || id.startsWith(query, ignoreCase = true) || label.contains(query, ignoreCase = true)
+}
+
 /** Actions reachable from the "+" button (the same menu as "/"). */
 data class ComposerActions(
     val onNewSession: (() -> Unit)? = null,
@@ -232,8 +245,6 @@ fun Composer(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var plusOpen by remember { mutableStateOf(false) }
-    /** The "/" menu: non-focusable so the keyboard stays up while it is open. */
-    var slashOpen by remember { mutableStateOf(false) }
     var presetOpen by remember { mutableStateOf(false) }
     var modelOpen by remember { mutableStateOf(false) }
     var modelQuery by remember { mutableStateOf("") }
@@ -258,9 +269,32 @@ fun Composer(
         if (uri != null) scope.launch { addFile(context, state, uri) }
     }
 
+    // The "+" menu and the "/" commands are the same list.
+    val commands = buildList {
+        add(ComposerCommand("image", stringResource(R.string.menu_image), R.drawable.dsw_fullscreen_outline, add = true) {
+            pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        })
+        add(ComposerCommand("file", stringResource(R.string.menu_file), R.drawable.dsw_paperclip_outline, add = true) { pickFile.launch(arrayOf("*/*")) })
+        if (showChips) {
+            add(ComposerCommand("permission", stringResource(R.string.cmd_permission), R.drawable.dsw_shield_outline, stringResource(R.string.cmd_permission_desc)) { presetOpen = true })
+            if (mode != null) add(ComposerCommand("mode", stringResource(R.string.mode_menu_title), ModeUi.icon(mode),
+                if (modeLocked) stringResource(R.string.mode_locked) else stringResource(R.string.mode_menu_hint)) { modeOpen = true })
+            add(ComposerCommand("model", stringResource(R.string.cmd_model), R.drawable.dsw_data_outline, stringResource(R.string.cmd_model_desc)) { modelOpen = true })
+        }
+        actions.onNewSession?.let { add(ComposerCommand("new", stringResource(R.string.new_session), R.drawable.dsw_new_chat_outline, run = it)) }
+        actions.onTrajectory?.let { add(ComposerCommand("trajectory", stringResource(R.string.view_trajectory), R.drawable.dsw_inspect_outline, stringResource(R.string.cmd_trajectory_desc), run = it)) }
+        actions.onAutomation?.let { add(ComposerCommand("automation", stringResource(R.string.automation), R.drawable.dsw_clock_outline, run = it)) }
+    }
+    // "/" + a word: the matching commands, listed in the card above the editor (#76). Not a popup: a popup
+    // takes the keyboard's taps as taps outside it and closed (and cleared the "/") on the next key.
+    val slash = SlashCommands.query(state.text)?.let { q -> commands.filter { SlashCommands.matches(q, it.id, it.label) } }.orEmpty()
+
     Column(
         modifier.fillMaxWidth().elevated(Radius.panel, c.borderL2, 8.dp).clip(Radius.panel).background(c.inputMajor).padding(top = 8.dp),
     ) {
+        if (slash.isNotEmpty()) Column(Modifier.fillMaxWidth().heightIn(max = 220.dp).verticalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 2.dp)) {
+            slash.forEach { cmd -> MenuItem(cmd.label, { state.text = ""; cmd.run() }, cmd.icon, cmd.description) }
+        }
         if (state.images.isNotEmpty() || state.files.isNotEmpty() || state.pending > 0) Row(Modifier.padding(horizontal = 10.dp, vertical = 2.dp).horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             val removeLabel = stringResource(R.string.remove_attachment)
@@ -298,7 +332,6 @@ fun Composer(
             { v ->
                 if (voice?.active == true) voice.onUserEdit()
                 state.text = v
-                if (v == "/") slashOpen = true else if (slashOpen && !v.startsWith("/")) slashOpen = false
             },
             Modifier.fillMaxWidth().heightIn(min = if (hero) 52.dp else 36.dp, max = 216.dp).padding(start = 14.dp, end = 8.dp, top = 4.dp).focusRequester(focus),
             textStyle = DshType.base16.copy(color = c.labelPrimary),
@@ -321,22 +354,12 @@ fun Composer(
                 Box(Modifier.size(28.dp).clip(CircleShape).background(c.selector).pressable({ if (settled()) plusOpen = true }, CircleShape), contentAlignment = Alignment.Center) {
                     DIcon(R.drawable.dsw_plus_outline, size = 14.dp, tint = c.labelPrimary, contentDescription = stringResource(R.string.plus_hint))
                 }
-                DMenu(plusOpen || slashOpen, { plusOpen = false; slashOpen = false; if (state.text == "/") state.text = "" }, focusable = !slashOpen) {
-                    val close = { plusOpen = false; slashOpen = false; if (state.text == "/") state.text = "" }
-                    MenuSectionTitle(stringResource(R.string.menu_add))
-                    MenuItem(stringResource(R.string.menu_image), { close(); pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, R.drawable.dsw_fullscreen_outline)
-                    MenuItem(stringResource(R.string.menu_file), { close(); pickFile.launch(arrayOf("*/*")) }, R.drawable.dsw_paperclip_outline)
-                    MenuDivider()
-                    MenuSectionTitle(stringResource(R.string.menu_commands))
-                    if (showChips) {
-                        MenuItem(stringResource(R.string.cmd_permission), { close(); presetOpen = true }, R.drawable.dsw_shield_outline, stringResource(R.string.cmd_permission_desc))
-                        if (mode != null) MenuItem(stringResource(R.string.mode_menu_title), { close(); modeOpen = true }, ModeUi.icon(mode),
-                            if (modeLocked) stringResource(R.string.mode_locked) else stringResource(R.string.mode_menu_hint))
-                        MenuItem(stringResource(R.string.cmd_model), { close(); modelOpen = true }, R.drawable.dsw_data_outline, stringResource(R.string.cmd_model_desc))
+                DMenu(plusOpen, { plusOpen = false }) {
+                    commands.forEachIndexed { i, cmd ->
+                        if (i == 0) MenuSectionTitle(stringResource(R.string.menu_add))
+                        if (i > 0 && commands[i - 1].add && !cmd.add) { MenuDivider(); MenuSectionTitle(stringResource(R.string.menu_commands)) }
+                        MenuItem(cmd.label, { plusOpen = false; cmd.run() }, cmd.icon, cmd.description)
                     }
-                    actions.onNewSession?.let { MenuItem(stringResource(R.string.new_session), { close(); it() }, R.drawable.dsw_new_chat_outline) }
-                    actions.onTrajectory?.let { MenuItem(stringResource(R.string.view_trajectory), { close(); it() }, R.drawable.dsw_inspect_outline, stringResource(R.string.cmd_trajectory_desc)) }
-                    actions.onAutomation?.let { MenuItem(stringResource(R.string.automation), { close(); it() }, R.drawable.dsw_clock_outline) }
                 }
             }
             if (showChips) Box {
