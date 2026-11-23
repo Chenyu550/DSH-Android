@@ -13,6 +13,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import android.view.Display
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -97,6 +98,7 @@ class ShellUserService : IShellService.Stub() {
                 val screen = Screen(vd, reader, flags)
                 if (DisplayTiers.ownGroup(flags)) screen.awake = keepAwake(id)
                 synchronized(displays) { displays[id] = screen }
+                if (DisplayTiers.ownFocus(flags)) startFocusKeeper()
                 // An untrusted display always gets the fallback IME policy (the keyboard shows on the main screen).
                 if (DisplayTiers.trusted(flags)) setImePolicy(id)
                 if (!DisplayTiers.trusted(flags)) Log.i(TAG, "agent display $id is untrusted (flags 0x${flags.toString(16)}): ${failures.joinToString("; ")}")
@@ -250,6 +252,49 @@ class ShellUserService : IShellService.Stub() {
         return viaApi || exec("am display move-stack $taskId $displayId", 10_000).substringBefore('\n') == "0"
     }
 
+    // ---- top focus (#77) ----------------------------------------------------------------------------
+
+    /** The keeper thread runs (guarded by [displays]). */
+    private var keepingFocus = false
+
+    /** While an agent display with its own focus exists, keeps the user's screen the top focused display (see DisplayTiers.reclaimMainFocus). */
+    private fun startFocusKeeper() {
+        synchronized(displays) { if (keepingFocus) return; keepingFocus = true }
+        Thread {
+            while (true) {
+                val own = synchronized(displays) {
+                    displays.filterValues { DisplayTiers.ownFocus(it.flags) }.keys.toSet().also { if (it.isEmpty()) keepingFocus = false }
+                }
+                if (own.isEmpty()) return@Thread
+                // A ROM without these task APIs for shell: stop (until the next display) instead of failing every poll.
+                // Did not take (nothing focusable on the main screen, e.g. under the keyguard): ask again later, not every poll.
+                val stuck = runCatching {
+                    DisplayTiers.reclaimMainFocus(focusedDisplay(), own, mainOn()) && run { focusMain(); focusedDisplay() in own }
+                }.onFailure { Log.w(TAG, "focus keeper stopped", it) }
+                if (stuck.isFailure) { synchronized(displays) { keepingFocus = false }; return@Thread }
+                Thread.sleep(if (stuck.getOrDefault(false)) FOCUS_POLL_MS * 10 else FOCUS_POLL_MS)
+            }
+        }.apply { name = "dsh-focus-keeper"; isDaemon = true }.start()
+    }
+
+    /** The display of the top focused root task (IActivityTaskManager.getFocusedRootTaskInfo), null when none. */
+    private fun focusedDisplay(): Int? {
+        val info = taskManager.javaClass.getMethod("getFocusedRootTaskInfo").invoke(taskManager) ?: return null
+        return taskInfo.getField("displayId").getInt(info)
+    }
+
+    private fun mainOn(): Boolean =
+        shellContext.getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)?.state == Display.STATE_ON
+
+    /** What a tap on the user's screen does: focus its top task, which raises that display back to the top. */
+    private fun focusMain() {
+        val viaTop = runCatching { taskManager.javaClass.getMethod("focusTopTask", Int::class.java).invoke(taskManager, Display.DEFAULT_DISPLAY) }
+        if (viaTop.isSuccess) return
+        // Before focusTopTask: the same through setFocusedTask on the main screen's most recent task.
+        val top = allTasks().firstOrNull { taskInfo.getField("displayId").getInt(it) == Display.DEFAULT_DISPLAY } ?: return
+        taskManager.javaClass.getMethod("setFocusedTask", Int::class.java).invoke(taskManager, taskInfo.getField("taskId").getInt(top))
+    }
+
     // ---- sound --------------------------------------------------------------------------------
 
     override fun setAudioMuted(pkg: String, muted: Boolean): Boolean {
@@ -307,6 +352,7 @@ class ShellUserService : IShellService.Stub() {
     private companion object {
         const val TAG = "DshShell"
         const val MAX_TASKS = 100
+        const val FOCUS_POLL_MS = 300L
         val PKG = Regex("[A-Za-z0-9_.]+")
     }
 }

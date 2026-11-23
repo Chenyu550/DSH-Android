@@ -54,6 +54,19 @@ class DisplayTiersTest {
         assertFalse(DisplayTiers.trustedDenied(UNTRUSTED or TRUSTED, SecurityException("Requires CAPTURE_VIDEO_OUTPUT")))
     }
 
+    @Test fun mainScreenGetsTheTopFocusBack() {
+        val t34 = DisplayTiers.tiers(34, skipTrusted = false)
+        assertTrue(DisplayTiers.ownFocus(t34.first()))
+        assertFalse(DisplayTiers.ownFocus(t34[1]))
+        assertFalse("OWN_FOCUS is ignored without TRUSTED", DisplayTiers.ownFocus(UNTRUSTED or OWN_FOCUS))
+        // #77: an agent display with its own focus became the top focused display while the user's screen is on.
+        assertTrue(DisplayTiers.reclaimMainFocus(focused = 5, ownFocusDisplays = setOf(5), mainOn = true))
+        assertFalse(DisplayTiers.reclaimMainFocus(focused = 0, ownFocusDisplays = setOf(5), mainOn = true))
+        assertFalse("main screen off", DisplayTiers.reclaimMainFocus(focused = 5, ownFocusDisplays = setOf(5), mainOn = false))
+        assertFalse("a display without its own focus keeps it", DisplayTiers.reclaimMainFocus(focused = 6, ownFocusDisplays = setOf(5), mainOn = true))
+        assertFalse(DisplayTiers.reclaimMainFocus(focused = null, ownFocusDisplays = setOf(5), mainOn = true))
+    }
+
     @Test fun degradedReason() {
         assertNull(DisplayTiers.degradedReason(UNTRUSTED or TRUSTED, 31))
         assertEquals("untrusted display: no ADD_TRUSTED_DISPLAY, SDK 31", DisplayTiers.degradedReason(UNTRUSTED, 31))

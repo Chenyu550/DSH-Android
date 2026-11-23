@@ -50,6 +50,20 @@ internal object DisplayTiers {
 
     fun trusted(flags: Int) = flags and TRUSTED != 0
     fun ownGroup(flags: Int) = flags and OWN_DISPLAY_GROUP != 0
+    fun ownFocus(flags: Int) = flags and OWN_FOCUS != 0 && trusted(flags)
+
+    /**
+     * Whether the top focus should be given back to the user's screen (#77): [focused], the display of the
+     * top focused root task, is an agent display with its own focus ([ownFocus]) while the main screen is on.
+     * A trusted display is raised to the top whenever one of its tasks comes to the front (a launch, an
+     * activity the app starts), and with its own focused window it then becomes the system's top focused
+     * display: Recents, the back/home keys and launches without a display resolve to it, so gesture
+     * navigation on the user's screen does nothing. Giving the focus back keeps the agent display's own
+     * focused window (its key events and `input -d text` still land) and the user's keyboard where it was.
+     * Displays without their own focus are left alone: they would lose their only focused window.
+     */
+    fun reclaimMainFocus(focused: Int?, ownFocusDisplays: Set<Int>, mainOn: Boolean): Boolean =
+        mainOn && focused != null && focused in ownFocusDisplays
 
     /**
      * [error], thrown creating a display with [flags], means this device refuses trusted displays to shell
