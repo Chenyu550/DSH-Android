@@ -23,6 +23,18 @@ class VoiceMachineTest {
         assertNull(m.on(VoiceEvent.Tick(50)))
     }
 
+    @Test fun `transcription shows its own state, then counts down like a recognizer result`() {
+        val m = listening()
+        assertNull(m.on(VoiceEvent.Transcribing))
+        assertEquals(VoiceState.Listening(ready = true, transcribing = true), m.state)
+        assertEquals(VoiceEffect.Release, m.on(VoiceEvent.Final("你好")))
+        assertEquals(VoiceState.Countdown("你好", 1500, 1500), m.state)
+        val n = listening()
+        n.on(VoiceEvent.Transcribing)
+        n.on(VoiceEvent.Error(VoiceError.Provider))
+        assertEquals(VoiceState.Failed(VoiceError.Provider), n.state)
+    }
+
     @Test fun `cancel during the countdown keeps the text unsent`() {
         val m = listening()
         m.on(VoiceEvent.Final("查天气"))

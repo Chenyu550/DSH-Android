@@ -14,7 +14,7 @@
 //  - skill import and MCP helpers.
 // Every operation returns plain JSON; failures are UserError objects (errors.js), never throws
 // for an expected refusal.
-import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { DEFAULT_INDEXES, bundlesOf, installedOf, isThirdParty, migrateIndexes, settleSafeMode, registryPlanFromEnv, paths as pathsOf, preparePnpmProject, readManifest, readState, removeTree, writeState } from './boot.js'
@@ -22,6 +22,7 @@ import { KNOWN_WEB_ONLY } from './precheck.js'
 import { fromManagerResult, labelsOf, localizedString, localizedText, marketError, userError } from './errors.js'
 import { fetchFirst, fetchLinkJson, fetchMirrored, fetchText, npmFileUrls, usePreferences } from './fetch-sources.js'
 import { skillScripts } from './skills.js'
+import { clientPlatform, clientPlatformOf, hasPlainConfig } from './rows.js'
 
 export const name = 'android-extensions'
 export const inject = ['loader', 'profileContext']
@@ -204,6 +205,17 @@ export function apply(ctx) {
     if (fiber.state === FIBER.PENDING) return { phase: 'waiting', waitingFor: Object.keys(fiber.inject ?? {}).filter(s => fiber.ctx.get(s) === undefined) }
     return { phase: fiber.state === FIBER.LOADING ? 'loading' : 'unloading' }
   }
+  // `dsh.client.platform` of a row's package, found the way the engine resolves it (as declaredRows does for meta).
+  const clientOfRow = (row, entry, bundleDir) => {
+    const packages = ctx.get('pluginPackages')
+    let base
+    try { base = entry?.parent?.tree?.ctx?.baseUrl } catch {}
+    base ??= bundleDir === undefined ? undefined : pathToFileURL(join(bundleDir, 'package.json')).href
+    if (typeof packages?.packageOf === 'function' && base !== undefined) {
+      try { return clientPlatform(packages.packageOf(row.moduleName, base)?.manifest) } catch {}
+    }
+    return clientPlatformOf(row.moduleName, p.profile, bundleDir)
+  }
   const entryIdOf = async entry => { try { return (await import('@deepseek-ai/dsh-host-plugin-inventory')).pluginEntryId(entry.id) } catch { return entry?.id } }
 
   const toolsByBundle = () => {
@@ -255,10 +267,16 @@ export function apply(ctx) {
       const b = byName.get(nm) ?? { name: nm, rows: [], overrides: [] }
       const enabled = selected.includes(nm)
       const rows = []
+      let bundleDir
+      try { bundleDir = realpathSync(join(p.profile, 'node_modules', nm)) } catch {}
       for (const row of b.rows ?? []) {
         const entry = entryByRow(row.rowId)
         const st = enabled && started.includes(nm) ? await rowState(entry) : { phase: 'inactive' }
-        rows.push({ id: row.rowId, module: row.moduleName, ...(entry ? { entryId: await entryIdOf(entry) } : row.entryId ? { entryId: row.entryId } : {}), ...st, configurable: entry?.fiber?.runtime?.Config !== undefined })
+        const client = clientOfRow(row, entry, bundleDir)
+        // A row without a Schemastery Config (dsh-engramory) still has its patch config: edited as a form inferred from it.
+        const schema = entry?.fiber?.runtime?.Config !== undefined
+        rows.push({ id: row.rowId, module: row.moduleName, ...(entry ? { entryId: await entryIdOf(entry) } : row.entryId ? { entryId: row.entryId } : {}), ...st,
+          configurable: schema || (entry !== undefined && hasPlainConfig(entry.options?.config)), ...client !== undefined ? { client } : {} })
       }
       const suspended = state.suspended[nm]
       const from = state.installedFrom[nm]

@@ -358,6 +358,7 @@ internal fun statusLine(p: ExtPlugin): String {
         ExtStatus.SUSPENDED -> stringResource(R.string.ext_status_suspended)
         else -> stringResource(R.string.ext_status_disabled)
     }
+    if (p.webUi) parts += stringResource(if (p.webOnly) R.string.ext_status_web_only else R.string.ext_status_web_ui)
     if (p.update != null && !p.update.compatible) parts += updateBlocked(p.update)
     return parts.joinToString(" · ")
 }

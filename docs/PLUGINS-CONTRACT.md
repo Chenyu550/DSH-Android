@@ -139,8 +139,13 @@ interface ExtPlugin {
   enabled: boolean                // in dsh.profile.bundles
   status: 'active'|'disabled'|'restart-pending'|'incompatible'|'failed'|'waiting'|'suspended'
   statusDetail?: UserError        // incompatible-version | activation-failed | waiting-service | crash-suspended | safe-mode
-  rows: { id: string; module: string; entryId?: string; phase: string; error?: string; waitingFor?: string[]; configurable: boolean }[]
+  rows: { id: string; module: string; entryId?: string; phase: string; error?: string; waitingFor?: string[]; configurable: boolean; client?: string }[]
                                   // phase: active|failed|waiting|loading|disabled|inactive|missing
+                                  // configurable: a Schemastery Config, or (no Config) a non-empty patch config: the app infers
+                                  //   a form from the current value plus a whole-config JSON editor (dsh-engramory, #88)
+                                  // client: dsh.client.platform of the row's package ('web'): it has a browser face (pages,
+                                  //   panels, settings card) only dsh's web client renders; the phone has none, so the detail
+                                  //   page says that part is web-only (#80) instead of "running" with nothing to open
   tools: string[]; skills: string[]; commands: string[]   // what it provides (running plugins)
   overrides: { rowId: string; label: string }[]           // built-in rows its patch changes ("会修改：联网搜索")
   skippedOptional: string[]
@@ -172,7 +177,7 @@ errors; a JSON-RPC error means a bad request (missing parameter) or an engine bu
 | `android/ext/updates` | `{refresh?}` → `{updates: {name, current, latest, compatible}[], checkedAt}` (cached 6 h; one abbreviated packument request per npm-installed plugin) |
 | `android/ext/update` | `{name, version?, requestId?, force?}` → `ChangeView` (exact version, same gates; a refused update reinstalls the previous version) |
 | `android/ext/detail` | `{name, language?, version?}` → `{markdown?, origin?}` (installed README.<lang>.md / README.md, else the first of jsDelivr (cdn / gcore / testingcf) → unpkg → npmmirror that answers) |
-| `android/ext/config/get` | `{entryId}` → `{entryId, rowId, module, schema, limitations, value, overridden, managedByApp}`: `schema` = JSON Schema 2020-12 for a form (no `!!js` branches, non-null types, constant unions as `enum`, `x-cordis.role: 'secret'` for secrets, `$defs` when recursive); `null` without a Config |
+| `android/ext/config/get` | `{entryId}` → `{entryId, rowId, module, schema, limitations, value, overridden, managedByApp}`: `schema` = JSON Schema 2020-12 for a form (no `!!js` branches, non-null types, constant unions as `enum`, `x-cordis.role: 'secret'` for secrets, `$defs` when recursive); `null` without a Config (the app then infers the form from `value`) |
 | `android/ext/config/set` | `{entryId, value}` → `{ok: true}` or `{ok: false, errors: {path, message}[]}`; applied live (no restart) through dsh's config editor, persisted in the profile patch |
 | `android/ext/askBeforeCall` | `{key, enabled}` → `{}`; `key` = bundle name or `mcp:<serverName>` |
 | `android/ext/resume` | `{name}` → `ChangeView` |
@@ -246,6 +251,12 @@ extension network requests of its own.
   for it ("插件和 MCP 工具") must be included by every mode that should keep them.
 - `askBeforeCall` keys make plugin-guard return `ask` for that plugin's / server's tools; the app's existing approval
   card shows them (risk `write`, as for any tool without a device descriptor).
+- Plugin UI (#80/#88): the engine ships no `dsh-client-ui-*` / webserver, so a package's browser half
+  (`dsh.client`, pages / panels / settings card) never loads. Its settings get a native form instead (Schemastery
+  `Config` → schema form; no `Config` but a patch config → form inferred from the value + whole-config JSON), and
+  rows with a browser half are reported (`client`) so the app marks the UI as web-only rather than showing a
+  "running" plugin with nothing to open. Not a WebView: it would mean shipping dsh's web app (60+ client packages,
+  webserver, api-gateway) for plugin pages alone.
 
 ## 7. DS-Bot
 

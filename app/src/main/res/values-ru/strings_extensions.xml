@@ -79,6 +79,15 @@
     <string name="ext_setting_secret_note">Хранится на телефоне</string>
     <string name="ext_setting_raw">Дополнительно: правка как код</string>
     <string name="ext_setting_raw_invalid">Недопустимое значение (в формате JSON)</string>
+    <string name="ext_status_web_ui">Интерфейс только в веб-клиенте</string>
+    <string name="ext_status_web_only">Только для веб-клиента</string>
+    <string name="ext_web_ui_title">Интерфейс доступен только в веб-клиенте</string>
+    <string name="ext_web_ui_desc">У плагина есть интерфейс веб-клиента (страница настроек, боковая панель или панели), который показывает только веб-клиент dsh на компьютере. В DSH для Android веб-клиента нет, поэтому эта часть не появится.</string>
+    <string name="ext_web_ui_host">Его инструменты, команды и другие части работают как обычно.</string>
+    <string name="ext_web_ui_only">Здесь он не добавляет инструментов, команд или навыков: его возможности находятся в этом интерфейсе, поэтому на телефоне открыть нечего.</string>
+    <string name="ext_web_ui_settings">Его конфигурацию можно изменить ниже в разделе «Настройки».</string>
+    <string name="ext_settings_inferred">Плагин не описывает формат конфигурации: поля ниже построены по текущей конфигурации и сохраняются как есть, их толкует сам плагин. Другие параметры смотри в README.</string>
+    <string name="ext_setting_raw_all">Править всю конфигурацию как JSON (можно добавить другие параметры из README)</string>
     <string name="ext_setting_list_hint">По одному в строке</string>
     <string name="ext_setting_default">По умолчанию: %s</string>
     <string name="ext_setting_unset">Не задано</string>

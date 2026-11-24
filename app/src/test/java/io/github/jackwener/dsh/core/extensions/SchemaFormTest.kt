@@ -111,4 +111,24 @@ class SchemaFormTest {
         assertEquals(JsonArray(listOf(JsonPrimitive("a"), JsonPrimitive("b"))), SchemaForm.parseList("a\n\n b \n"))
         assertEquals("a\nb", SchemaForm.listText(JsonObject(mapOf("l" to SchemaForm.parseList("a\nb"))), listOf("l")))
     }
+
+    @Test fun `a config without a schema becomes a form by its values`() {
+        val v = RpcJson.parseToJsonElement("""{"name":"MEMORY.md","on":false,"n":3,"ratio":0.5,"tags":["a"],"mixed":[1,"x"],"nested":{"k":"v"},"none":null}""")
+        val f = SchemaForm.inferred(v, overridden = listOf("nested"))
+        assertEquals(listOf("name", "on", "n", "ratio", "tags", "mixed", "nested", "none", ""), f.map { it.title })
+        assertTrue(f[0] is FormField.Text)
+        assertTrue(f[1] is FormField.Toggle)
+        assertTrue((f[2] as FormField.Number).integer)
+        assertFalse((f[3] as FormField.Number).integer)
+        assertTrue(f[4] is FormField.StringList)
+        assertTrue(f[5] is FormField.Raw)
+        val nested = f[6] as FormField.Group
+        assertTrue(nested.locked && nested.fields.single().locked)
+        assertEquals(listOf("nested", "k"), nested.fields.single().path)
+        assertTrue(f[7] is FormField.Raw)
+        assertEquals(emptyList<String>(), f.last().path)
+        assertFalse(f.last().locked)
+        assertTrue(SchemaForm.inferred(v, listOf("*")).all { it.locked })
+        assertTrue(SchemaForm.inferred(RpcJson.parseToJsonElement("""{"t":{"__jsExpr":"env.X"}}""")).first() is FormField.Raw)
+    }
 }

@@ -825,7 +825,7 @@
     <string name="voice_listening">正在听…</string>
     <string name="voice_sending">即将发送</string>
     <string name="voice_tap_edit">点此编辑</string>
-    <string name="voice_err_no_recognizer">本机没有可用的语音识别服务，请用键盘输入</string>
+    <string name="voice_err_no_recognizer">本机没有语音识别服务。可在 设置 → 通用 → 语音识别 添加语音转写服务商，或用键盘输入</string>
     <string name="voice_err_permission">语音输入需要麦克风权限，点此去设置开启</string>
     <string name="voice_err_no_match">没有听清，点此重试</string>
     <string name="voice_err_network">语音识别需要网络，请检查网络后点此重试</string>
@@ -833,6 +833,13 @@
     <string name="voice_err_audio">无法录音，麦克风可能正被占用。点此重试</string>
     <string name="voice_err_language">语音识别不支持当前语言，请用键盘输入</string>
     <string name="voice_err_other">语音识别出错，点此重试</string>
+    <string name="voice_transcribing">正在识别…</string>
+    <string name="voice_err_provider">语音转写服务拒绝了请求，请检查服务商的 Key、余额或模型，点此重试</string>
+    <string name="voice_service">语音识别</string>
+    <string name="voice_service_on_device">使用系统离线语音识别</string>
+    <string name="voice_service_system">使用系统语音识别：%1$s</string>
+    <string name="voice_service_cloud">本机没有语音识别服务，语音输入通过 %1$s 转写（%2$s）</string>
+    <string name="voice_service_none">本机没有语音识别服务（没有 Google 的手机常见）。点此添加硅基流动（免费的 SenseVoice 语音转写，中文效果好）；OpenAI、Groq 等支持语音转写的服务商也可以</string>
     <string name="prov_hint_ollama">Ollama 默认只接受电脑自己的连接。请在电脑上设置环境变量 OLLAMA_HOST=0.0.0.0 并重启 Ollama，再把地址里的 localhost 换成电脑的局域网 IP，手机和电脑要连同一个 Wi-Fi。</string>
     <string name="prov_hint_lmstudio">在 LM Studio 的本地服务器设置里打开「在局域网中提供服务」(Serve on Local Network) 并启动服务，再把地址里的 localhost 换成电脑的局域网 IP，手机和电脑要连同一个 Wi-Fi。</string>
     <string name="prov_test">测试</string>

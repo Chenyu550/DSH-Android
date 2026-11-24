@@ -9,9 +9,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
-import android.provider.Settings
 import android.speech.RecognitionListener
-import android.speech.RecognitionService
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -42,8 +40,9 @@ import java.util.Locale
  * final text is sent after a short countdown ([VoiceMachine]) unless the user edits or cancels.
  *
  * Recognizer choice: the on-device one (API 31+) when the system has it, else a recognition
- * service other than DSH's own stub (when DSH is the default assistant, the system default
- * recognizer *is* that stub), else the RECOGNIZE_SPEECH activity of some app, else the keyboard.
+ * service other than DSH's own ([Recognizers]), else a configured provider's transcription
+ * ([CloudSpeech]: phones without Google usually have no recognizer at all, #81), else the
+ * RECOGNIZE_SPEECH activity of some app, else the keyboard.
  */
 @Stable
 class VoiceInput internal constructor(private val context: Context, private val composer: ComposerState, private val scope: CoroutineScope) {
@@ -57,6 +56,10 @@ class VoiceInput internal constructor(private val context: Context, private val 
     internal var launchActivity: (Intent) -> Boolean = { false }
 
     private var recognizer: SpeechRecognizer? = null
+    private var cloudSession: CloudSpeech.Session? = null
+    private val cloud by lazy { CloudSpeech.of(context) }
+    /** The start() still deciding between transcription and a recognizer activity; a newer start or cancel replaces it. */
+    private var starting: Any? = null
     private var onDevice = false
     private var draft = ""
     private var timer: Job? = null
@@ -66,27 +69,40 @@ class VoiceInput internal constructor(private val context: Context, private val 
     fun start() {
         cancel()
         draft = composer.text
-        val service = serviceRecognizer()
+        val service = Recognizers.best(context)
         val canOnDevice = Build.VERSION.SDK_INT >= 31 && runCatching { SpeechRecognizer.isOnDeviceRecognitionAvailable(context) }.getOrDefault(false)
-        if (!canOnDevice && service == null) {
-            // No in-app recognizer: a recognizer activity needs no microphone permission of ours.
-            if (launchActivity(recognizeIntent())) dispatch(VoiceEvent.Start) else dispatch(VoiceEvent.Start).also { dispatch(VoiceEvent.Error(VoiceError.NoRecognizer)) }
+        if (canOnDevice || service != null) {
+            if (!hasMic()) { requestPermission(); return }
+            dispatch(VoiceEvent.Start)
+            listen(onDevice = canOnDevice, service)
             return
         }
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { requestPermission(); return }
         dispatch(VoiceEvent.Start)
-        listen(onDevice = canOnDevice, service)
+        val attempt = Any().also { starting = it }
+        scope.launch {
+            val transcribes = runCatching { cloud.route() != null }.getOrDefault(false)
+            if (starting !== attempt || state !is VoiceState.Listening) return@launch
+            when {
+                transcribes && !hasMic() -> { dispatch(VoiceEvent.Cancel); requestPermission() }
+                transcribes -> listenCloud()
+                // A recognizer activity needs no microphone permission of ours.
+                !launchActivity(recognizeIntent()) -> dispatch(VoiceEvent.Error(VoiceError.NoRecognizer))
+            }
+        }
     }
+
+    private fun hasMic() = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
     /** Stops taking audio: the recognizer then delivers the final result (nothing heard yet: just cancels). */
     fun stop() {
         val s = state as? VoiceState.Listening ?: return
+        cloudSession?.let { if (!s.transcribing) it.stop(); return }
         val r = recognizer
         if (r != null && s.text.isNotEmpty()) r.stopListening() else cancel()
     }
 
     /** Keeps whatever is in the composer and sends nothing. */
-    fun cancel() { if (state != VoiceState.Idle) dispatch(VoiceEvent.Cancel) }
+    fun cancel() { starting = null; if (state != VoiceState.Idle) dispatch(VoiceEvent.Cancel) }
 
     /** The user typed in the composer while we were writing to it. */
     fun onUserEdit() = cancel()
@@ -113,6 +129,21 @@ class VoiceInput internal constructor(private val context: Context, private val 
         recognizer = r
         r.setRecognitionListener(Listener(r, service))
         runCatching { r.startListening(recognizeIntent()) }.onFailure { dispatch(VoiceEvent.Error(VoiceError.Other)) }
+    }
+
+    private fun listenCloud() {
+        destroyRecognizer()
+        lateinit var session: CloudSpeech.Session
+        session = cloud.session(scope, object : CloudSpeech.Listener {
+            private val current get() = cloudSession === session
+            override fun onReady() { if (current) dispatch(VoiceEvent.Ready) }
+            override fun onLevel(rmsDb: Float) { if (current) dispatch(VoiceEvent.Level(rmsDb)) }
+            override fun onTranscribing() { if (current) dispatch(VoiceEvent.Transcribing) }
+            override fun onResult(text: String) { if (current) dispatch(VoiceEvent.Final(text)) }
+            override fun onError(error: VoiceError) { if (current) dispatch(VoiceEvent.Error(error)) }
+        })
+        cloudSession = session
+        session.start()
     }
 
     private inner class Listener(private val r: SpeechRecognizer, private val service: ComponentName?) : RecognitionListener {
@@ -169,6 +200,7 @@ class VoiceInput internal constructor(private val context: Context, private val 
     }
 
     private fun destroyRecognizer() {
+        cloudSession?.let { cloudSession = null; it.cancel() }
         val r = recognizer ?: return
         recognizer = null
         runCatching { r.cancel(); r.destroy() }
@@ -181,21 +213,9 @@ class VoiceInput internal constructor(private val context: Context, private val 
         .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
 
-    /** The system default recognition service unless it is our own stub, else a known good one, else any. */
-    private fun serviceRecognizer(): ComponentName? {
-        val pm = context.packageManager
-        val all = runCatching { pm.queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE), 0) }.getOrDefault(emptyList())
-            .map { ComponentName(it.serviceInfo.packageName, it.serviceInfo.name) }.filter { it.packageName != context.packageName }
-        if (all.isEmpty()) return null
-        val default = runCatching { Settings.Secure.getString(context.contentResolver, "voice_recognition_service") }.getOrNull()
-            ?.let(ComponentName::unflattenFromString)
-        return all.firstOrNull { it == default } ?: PREFERRED.firstNotNullOfOrNull { p -> all.firstOrNull { it.packageName == p } } ?: all.first()
-    }
-
     companion object {
         private const val TICK_MS = 50L
         private const val ERROR_SHOWN_MS = 4000L
-        private val PREFERRED = listOf("com.google.android.googlequicksearchbox", "com.google.android.tts", "com.google.android.as")
     }
 }
 

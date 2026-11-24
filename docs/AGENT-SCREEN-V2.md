@@ -27,6 +27,7 @@
   - 基础：`PUBLIC | OWN_CONTENT_ONLY | SUPPORTS_TOUCH | ROTATES_WITH_CONTENT | DESTROY_CONTENT_ON_REMOVAL`
   - Android 13+：`TRUSTED | OWN_DISPLAY_GROUP | ALWAYS_UNLOCKED | TOUCH_FEEDBACK_DISABLED`
   - Android 14+：`OWN_FOCUS | STEAL_TOP_FOCUS_DISABLED`（后台屏有独立焦点，不抢用户键盘）
+  - 主屏保持最上层焦点（#77）：受信任的屏在它的任务回到前台时（启动 App、App 自己开新页面）会被系统挪到所有屏最上层；有独立焦点的后台屏此时就成了系统的“最上层焦点屏”，最近任务、返回/主页键和不指定屏的启动都落到后台屏上，主屏手势导航失效（vivo Android 16 实测）。Shizuku 服务在有这类后台屏时每 300ms 查一次焦点任务所在的屏（`getFocusedRootTaskInfo`），落在后台屏且主屏亮着时用 `focusTopTask(0)`（旧版 `setFocusedTask`）把焦点还给主屏，等同用户点了一下主屏。后台屏保留自己的焦点窗口，`input -d` 按键和文字照常送达。不去掉 `OWN_FOCUS`：去掉后后台屏只有在最上层时才有焦点窗口，按键注入要靠抢主屏焦点，问题反而更多。没有独立焦点的屏（Android 13）不做这件事，否则后台屏没有焦点窗口。
   - 输入法策略设为“只在后台屏本地显示”（`IWindowManager.setDisplayImePolicy`）。
   - 尺寸和密度同主屏。
   - **兼容模式（不受信任的后台屏，#60）**：`TRUSTED` 和 `OWN_DISPLAY_GROUP` 都要 `ADD_TRUSTED_DISPLAY`（signature 权限，AOSP 给 shell，但有的 ROM 没给，如华为 EMUI 14.2 / Android 12）。所有受信任的 flag 组都失败后，用 `PUBLIC | OWN_CONTENT_ONLY | SUPPORTS_TOUCH | ROTATES_WITH_CONTENT | DESTROY_CONTENT_ON_REMOVAL`，再不行用 `PUBLIC | OWN_CONTENT_ONLY`。不加 `PRESENTATION`（会让别的 App 把后台屏当副屏投放内容）。

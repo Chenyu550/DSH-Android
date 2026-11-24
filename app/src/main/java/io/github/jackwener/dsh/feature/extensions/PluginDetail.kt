@@ -83,6 +83,12 @@ fun PluginDetailPage(vm: ExtensionsViewModel, name: String, onBack: () -> Unit) 
         SettingsRow(p.displayTitle, statusLine(p), divider = false, leading = { PluginIcon(p.iconDataUrl, statusDot(p)) },
             trailing = { if (name in busy) Spinner(14.dp) else if (p.status != ExtStatus.SUSPENDED) DSwitch(p.enabled, { vm.setEnabled(name, it) }) })
         p.descriptionText?.let { Text(it, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp), style = DshType.xs13, color = c.labelSecondary) }
+        // #80/#88: its pages / panels / settings card belong to the web client, which the phone does not have.
+        if (p.webUi) SettingsRow(stringResource(R.string.ext_web_ui_title), listOfNotNull(
+            stringResource(R.string.ext_web_ui_desc),
+            stringResource(if (p.webOnly) R.string.ext_web_ui_only else R.string.ext_web_ui_host),
+            if (p.rows.any { it.configurable && it.entryId != null }) stringResource(R.string.ext_web_ui_settings) else null,
+        ).joinToString("\n"), leading = { StateDot(DotKind.Info) })
         p.suspended?.let { s ->
             SettingsRow(if (s.reason == "crash") stringResource(R.string.ext_suspended_crash, Fmt.relative(context, s.at)) else stringResource(R.string.ext_suspended_safe),
                 s.message, leading = { StateDot(DotKind.Warn) },
@@ -253,6 +259,8 @@ private fun ConfigForm(vm: ExtensionsViewModel, entryId: String) {
     val editor = remember(entryId) { vm.configEditor(entryId) }
     val s by editor.state.collectAsStateWithLifecycle()
     SettingsCard {
+        if (!s.loading && s.loadError == null && s.inferred) Text(stringResource(R.string.ext_settings_inferred), Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+            style = DshType.xxs12, color = c.labelTertiary)
         when {
             s.loading -> Box(Modifier.padding(16.dp)) { Spinner(14.dp) }
             s.loadError != null -> SettingsRow(ExtText.error(LocalContext.current, s.loadError!!), divider = false, leading = { StateDot(DotKind.Warn) })
@@ -292,7 +300,7 @@ private fun FieldView(editor: ConfigEditor, s: ConfigEditor.State, f: FormField,
                     }
                 }
             } else {
-                var text by remember(key) { mutableStateOf(SchemaForm.textOf(s.value, f.path)) }
+                var text by remember(key, s.revision) { mutableStateOf(SchemaForm.textOf(s.value, f.path)) }
                 if (enabled) DInput(text, { text = it; editor.set(f.path, it.takeIf { v -> v.isNotEmpty() }?.let(::JsonPrimitive)) },
                     placeholder = f.default?.let { if (f.secret) "" else it }.orEmpty(), secret = f.secret, singleLine = !f.multiline,
                     minHeight = if (f.multiline) 80.dp else 40.dp)
@@ -301,7 +309,7 @@ private fun FieldView(editor: ConfigEditor, s: ConfigEditor.State, f: FormField,
             }
         }
         is FormField.Number -> SettingsRow(f.title, desc, divider = divider, stacked = true) {
-            var text by remember(key) { mutableStateOf(SchemaForm.numberText(s.value, f.path)) }
+            var text by remember(key, s.revision) { mutableStateOf(SchemaForm.numberText(s.value, f.path)) }
             val invalid = stringResource(R.string.ext_number_invalid)
             if (enabled) DInput(text, { t ->
                 text = t
@@ -312,7 +320,7 @@ private fun FieldView(editor: ConfigEditor, s: ConfigEditor.State, f: FormField,
             if (f.min != null && f.max != null) Text(stringResource(R.string.ext_number_range, fmt(f.min), fmt(f.max)), Modifier.padding(top = 4.dp), style = DshType.xxs12, color = c.labelTertiary)
         }
         is FormField.StringList -> SettingsRow(f.title, desc, divider = divider, stacked = true) {
-            var text by remember(key) { mutableStateOf(SchemaForm.listText(s.value, f.path)) }
+            var text by remember(key, s.revision) { mutableStateOf(SchemaForm.listText(s.value, f.path)) }
             if (enabled) DInput(text, { text = it; editor.set(f.path, SchemaForm.parseList(it)) }, placeholder = f.default?.joinToString("\n") ?: stringResource(R.string.ext_setting_list_hint),
                 singleLine = false, minHeight = 72.dp)
             else Text(text.ifEmpty { "—" }, style = DshType.s14, color = c.labelSecondary)
@@ -322,7 +330,7 @@ private fun FieldView(editor: ConfigEditor, s: ConfigEditor.State, f: FormField,
             SettingsRow(f.title, f.description, divider = divider, onClick = { open = !open }, trailing = { Chevron(open = open) })
             ExpandBody(open) { Column(Modifier.padding(start = 12.dp)) { f.fields.forEachIndexed { i, sub -> FieldView(editor, s, sub, divider = true) } } }
         }
-        is FormField.Raw -> RawField(editor, s, f, desc, divider)
+        is FormField.Raw -> RawField(editor, s, f, if (s.inferred && f.path.isEmpty()) stringResource(R.string.ext_setting_raw_all) else desc, divider)
     }
 }
 
@@ -332,8 +340,10 @@ private fun RawField(editor: ConfigEditor, s: ConfigEditor.State, f: FormField.R
     val c = Dsh.colors
     var open by remember { mutableStateOf(false) }
     val current = SchemaForm.valueAt(s.value, f.path)
-    var text by remember(f.path) { mutableStateOf(current?.let { RpcJson.encodeToString(kotlinx.serialization.json.JsonElement.serializer(), it) }.orEmpty()) }
+    var text by remember(f.path) { mutableStateOf("") }
     var bad by remember { mutableStateOf(false) }
+    // Read when opened: other fields may have changed the value meanwhile.
+    LaunchedEffect(open) { if (open) text = current?.let { RpcJson.encodeToString(kotlinx.serialization.json.JsonElement.serializer(), it) }.orEmpty() }
     SettingsRow(f.title.ifEmpty { stringResource(R.string.ext_setting_raw) }, desc ?: stringResource(R.string.ext_setting_raw), divider = divider, onClick = { open = !open },
         trailing = { Chevron(open = open) })
     ExpandBody(open) {
