@@ -1059,6 +1059,8 @@ class SessionStore @Inject constructor(
         val UNLOGGED = setOf("request/header", "request/context", "system/message", "developer/message", "session/end-seed",
             // The title call's request (#89): it repeats the first message and reply.
             "session/title-llm-request",
+            // A web search's DeepSeek Messages request (dsh 0.2.2); the web_search call and result show it.
+            "web/deepseek-search-llm-request",
             // plugin-mode's selection record and dsh's model selection (android/session/model); the session row holds both.
             "plugin:android-mode/selected", "model/selection")
 
