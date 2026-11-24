@@ -51,6 +51,13 @@ data class SessionEntity(
     val modelProvider: String? = null,
     val modelId: String? = null,
     val modelEffort: String? = null,
+    /**
+     * Edit / retry / fork (#2, core/session/Forks.kt): the conversation this one was forked from (dsh's
+     * boundary fork: a new session seeded with a prefix of that one's log) and how ([ForkKind] id). An
+     * edit or retry stands in for its source in the session list; the source stays reachable from it.
+     */
+    val forkOf: String? = null,
+    val forkKind: String? = null,
 )
 
 /**
@@ -117,6 +124,11 @@ interface SessionDao {
     suspend fun delete(id: String)
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertEvent(e: EventEntity)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertEvents(es: List<EventEntity>)
+    /** Conversations forked from [id] (#2), newest first. */
+    @Query("SELECT * FROM sessions WHERE forkOf = :id ORDER BY createdAt DESC")
+    fun observeForks(id: String): Flow<List<SessionEntity>>
     @Query("SELECT * FROM events WHERE sessionId = :id ORDER BY time, seq")
     suspend fun events(id: String): List<EventEntity>
     @Query("DELETE FROM events WHERE sessionId = :id")
@@ -166,7 +178,7 @@ abstract class DshDatabase : RoomDatabase() {
     abstract fun usage(): UsageDao
 }
 
-const val DB_VERSION = 5
+const val DB_VERSION = 6
 
 /**
  * Schema migrations. Every released version from 2 on is migrated in place (conversations are user
@@ -199,7 +211,17 @@ object Migrations {
         override fun migrate(db: SupportSQLiteDatabase) { SQL_4_5.forEach(db::execSQL) }
     }
 
-    val ALL: Array<Migration> = arrayOf(M_2_3, M_3_4, M_4_5)
+    /** v6: edit / retry / fork lineage (#2). Existing rows read null = not forked. */
+    val SQL_5_6 = listOf(
+        "ALTER TABLE `sessions` ADD COLUMN `forkOf` TEXT",
+        "ALTER TABLE `sessions` ADD COLUMN `forkKind` TEXT",
+    )
+
+    val M_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) { SQL_5_6.forEach(db::execSQL) }
+    }
+
+    val ALL: Array<Migration> = arrayOf(M_2_3, M_3_4, M_4_5, M_5_6)
     /** Versions that are still recreated instead of migrated. */
     val DESTRUCTIVE_FROM = intArrayOf(1)
 }

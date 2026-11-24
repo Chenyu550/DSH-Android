@@ -1014,4 +1014,25 @@
     <string name="adb_jit_title">连上 ADB 通道以继续</string>
     <string name="adb_jit_body">“%1$s”需要 shell 权限。DSH 的 ADB 通道已配对但现在连不上：打开「开发者选项 → 无线调试」，回来后会自动继续。</string>
     <string name="adb_jit_alt">不想装 Shizuku？也可以在 设置 → 手机权限 里用「直接 ADB 授权」。</string>
+
+    <!-- 编辑 / 重试 / 分叉 (#2) -->
+    <string name="msg_edit">编辑</string>
+    <string name="msg_retry">重试</string>
+    <string name="msg_fork">从这里分叉</string>
+    <string name="msg_retry_desc">在新版本里重新生成这条回复</string>
+    <string name="msg_edit_desc">修改后在新版本里重新发送</string>
+    <string name="msg_fork_desc">保留到这一轮为止，另开一个对话</string>
+    <string name="fork_busy">对话正在运行，先停止再编辑、重试或分叉</string>
+    <string name="fork_failed">没能创建新对话：%1$s</string>
+    <string name="fork_title">%1$s（分支）</string>
+    <string name="edit_banner">编辑消息</string>
+    <string name="edit_banner_hint">发送后在新版本里继续，原对话保留</string>
+    <string name="edit_cancel">取消编辑</string>
+    <string name="edit_kept">原有附件 %1$d 个</string>
+    <string name="lineage_edit">这是编辑后重新发送的版本</string>
+    <string name="lineage_retry">这是重新生成的版本</string>
+    <string name="lineage_fork">分叉自「%1$s」</string>
+    <string name="lineage_open_source">查看原对话</string>
+    <string name="lineage_newer">这个对话有更新的版本</string>
+    <string name="lineage_open_newer">查看新版本</string>
 </resources>

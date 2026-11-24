@@ -168,7 +168,15 @@ sealed interface Block {
     data class Notice(override val key: String, val text: String, val kind: String? = null, val resumed: Boolean = false) : Block
 }
 
-data class UserMsg(val seq: Long, val time: Long, val text: String, val images: Int, val files: Int)
+/**
+ * A human message. [messageId]: dsh's message id (null for a prompt that never reached the engine), the
+ * anchor of 编辑 / 重试 / 分叉 (#2); [attachments]: its non-text content blocks as dsh stored them (images
+ * and files by their durable attachment reference), sent again with an edited or retried message.
+ */
+data class UserMsg(
+    val seq: Long, val time: Long, val text: String, val images: Int, val files: Int,
+    val messageId: String? = null, val attachments: List<JsonObject> = emptyList(),
+)
 
 /** [Steered]: the part of a running turn before a message the user steered into it; the turn goes on in the next [Turn]. */
 enum class TurnStatus { Running, Completed, Failed, Stopped, MaxTokens, Steered }
@@ -294,7 +302,8 @@ object Projector {
                         } else if (prev != null && turns.lastOrNull() === prev) resumeInto = prev
                         continue
                     }
-                    val msg = UserMsg(e.seq, e.time, textOf(content), countOf(content, "image"), countOf(content, "file"))
+                    val msg = UserMsg(e.seq, e.time, textOf(content), countOf(content, "image"), countOf(content, "file"), d.s("id"),
+                        (content as? JsonArray)?.mapNotNull { (it as? JsonObject)?.takeIf { b -> b.s("type") != "text" } }.orEmpty())
                     val t = open()
                     // A turn's own prompt: nothing of the model's yet (a compaction or a notice may precede it).
                     if (t != null && t.user == null && t.blocks.all { it is Block.Compaction || it is Block.Notice }) t.user = msg

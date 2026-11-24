@@ -201,6 +201,30 @@ an offset past its log (`LogSeqs`), never treating a seq as a cross-generation i
   engine runs. dsh's user title pins the conversation (a title call still waiting is dropped); `applied: false` when
   this process does not hold the conversation. The app keeps its own record either way (`app/title` event: engine
   `session/title` events never replace a title the user set).
+- `android/session/fork { sessionId, childSessionId, beforeMessageId? }` → `{ sessionId, inherited, closers }`
+  (plugin-guard `session-fork.js`, through patch 10; #2): 编辑 / 重试 / 从这里分叉. dsh models no session tree, only
+  boundary forks (the Web host's `session/fork`): the child is a new ordinary session seeded with an exact prefix of the
+  source's log by dsh-session's `buildForkSeed` (copied events, a `session/end-seed` marker, and for a cut inside a turn
+  synthetic `forked` tool results and step/turn closers), validated like a live Session and written straight to dsh's
+  session store (`sessionPersistence.create` + append + flush, as dsh-deepseek-chat-import stores a session). It is
+  not opened: the app's next `session/prompt` on it is refused as `already exists` until it is `session/resume`d, like
+  a session of an earlier engine process (the app resumes it because it logged its copy of the prefix). The source is
+  read live (flushed first) or from the store, and is never changed. The cut: `beforeMessageId` = the `id` of a human
+  `user/message` (`source.kind: 'user'`); the child keeps everything before the turn that message opened and before
+  the `agent/inbox/spliced` that queued it, or, for a message steered into a running turn, everything before the
+  message. Without it the child keeps the whole log. `inherited` = source events copied (0: nothing stored, the app's
+  prompt creates the child); `closers` = the child's synthetic events after the marker, which the app logs after its
+  copy. Errors: unknown source or message, `childSessionId` already exists.
+  **App side** (`SessionStore.resend` / `fork`, `core/session/Forks.kt`): refused while the source runs. The app copies
+  its own log up to the same cut (`Forks.cut`, the same rule over its log) into a new row (`sessions.forkOf`,
+  `forkKind`: `edit` | `retry` | `fork`; preset, mode, model, mute copied; never an automation run: a fork of an
+  `auto_…` run is the user's own conversation), shows it at once, resumes the source if an earlier engine process had
+  it open (dsh migrates and repairs a stored log on resume), then calls the method (skipped when the copy holds no
+  engine event). 编辑 / 重试 then send the edited / same text with the original message's attachments as dsh stored
+  them (`{ type: 'image' | 'file', attachment }` blocks, accepted by `session/prompt` as they are) plus any new images.
+  An edit or retry stands in for its source in the session list while it is not archived or deleted; both show a
+  line linking to the other. A failed fork discards the new row and goes back to the source (the edited text returns
+  to its composer).
 - `android/session/model { sessionId, provider, model, reasoningEffort? } | { sessionId, model: null }` →
   `{ selected: { provider, model, reasoningEffort? } }` (plugin-guard `session-model.js`, through patch 10; #53). Each
   conversation's own model (the app's `sessions.modelProvider/modelId/modelEffort`: a copy of the default taken at its

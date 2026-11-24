@@ -999,4 +999,25 @@
     <string name="adb_jit_title">Подключи канал ADB, чтобы продолжить</string>
     <string name="adb_jit_body">Для «%1$s» нужен доступ shell. Канал ADB в DSH сопряжён, но сейчас недоступен: включи «Параметры разработчика → Отладка по Wi‑Fi», и работа продолжится сама.</string>
     <string name="adb_jit_alt">Не хочешь ставить Shizuku? Используй «Прямой доступ через ADB» в Настройки → Разрешения телефона.</string>
+
+    <!-- 编辑 / 重试 / 分叉 (#2) -->
+    <string name="msg_edit">Изменить</string>
+    <string name="msg_retry">Повторить</string>
+    <string name="msg_fork">Ответвить отсюда</string>
+    <string name="msg_retry_desc">Сгенерировать ответ заново в новой версии</string>
+    <string name="msg_edit_desc">Изменить и отправить заново в новой версии</string>
+    <string name="msg_fork_desc">Новый диалог со всем до конца этого хода</string>
+    <string name="fork_busy">Диалог выполняется. Остановите его, прежде чем изменять, повторять или ответвлять.</string>
+    <string name="fork_failed">Не удалось создать новый диалог: %1$s</string>
+    <string name="fork_title">%1$s (ветка)</string>
+    <string name="edit_banner">Изменение сообщения</string>
+    <string name="edit_banner_hint">После отправки продолжится новая версия, исходный диалог сохранится</string>
+    <string name="edit_cancel">Отменить изменение</string>
+    <string name="edit_kept">Исходных вложений: %1$d</string>
+    <string name="lineage_edit">Эта версия отправлена заново после изменения</string>
+    <string name="lineage_retry">В этой версии ответ сгенерирован заново</string>
+    <string name="lineage_fork">Ответвлено от «%1$s»</string>
+    <string name="lineage_open_source">Открыть исходный</string>
+    <string name="lineage_newer">У этого диалога есть более новая версия</string>
+    <string name="lineage_open_newer">Открыть новую версию</string>
 </resources>

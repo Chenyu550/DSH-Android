@@ -94,6 +94,10 @@ open class ConversationController(
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.Eagerly, Conversation())
 
+    /** The shown conversation among its forks (#2): the line above its messages. */
+    val lineage: StateFlow<io.github.jackwener.dsh.core.session.Lineage> = sessionId.flatMapLatest { id -> store.lineage(id) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, io.github.jackwener.dsh.core.session.Lineage())
+
     val view = MutableStateFlow(SessionView.Chat)
     /** Trajectory record to scroll to and inspect (set by a tool row's 查看 pill). */
     val focusRecord = MutableStateFlow<String?>(null)
@@ -135,6 +139,14 @@ open class ConversationController(
     fun consumeRestoredDraft() = store.consumeRestoredDraft(sessionId.value)
 
     fun stop() = viewModelScope.launch { store.stop() }
+    /**
+     * 编辑 / 重试 (#2): a new version of the conversation from before message [messageId], which sends [text]
+     * ([kept]: the original's attachments, [images]: new ones). It is shown at once; the source again if the fork fails.
+     */
+    fun resend(messageId: String, kind: io.github.jackwener.dsh.core.session.ForkKind, text: String, images: List<Pair<String, String>>,
+               kept: List<kotlinx.serialization.json.JsonObject>) = viewModelScope.launch { store.resend(sessionId.value, messageId, kind, text, images, kept, ::open) }
+    /** 从这里分叉 (#2): a new conversation up to the end of a turn (before [nextMessageId]; null: all of it). */
+    fun fork(nextMessageId: String?) = viewModelScope.launch { store.fork(sessionId.value, nextMessageId, ::open) }
     fun retry(e: TurnError) = viewModelScope.launch { store.retry(sessionId.value, e) }
     /** 继续 on a turn's end card (work remains). */
     fun continueTask() = viewModelScope.launch { store.continueTask(sessionId.value) }

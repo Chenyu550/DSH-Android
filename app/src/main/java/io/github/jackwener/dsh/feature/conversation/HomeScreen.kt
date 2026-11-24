@@ -112,7 +112,16 @@ private fun ConversationPane(vm: HomeViewModel, onMenu: () -> Unit, onSettings: 
     val settings by vm.settings.collectAsStateWithLifecycle()
     val view by vm.view.collectAsStateWithLifecycle()
     val prefill by vm.prefill.collectAsStateWithLifecycle()
+    val lineage by vm.lineage.collectAsStateWithLifecycle()
     val composer = rememberComposerState(live.sessionId)
+    // 编辑 / 重试 / 从这里分叉 (#2): each makes a new conversation (dsh's fork), shown right away.
+    val actions = remember(vm, composer) {
+        MessageActions(
+            onEdit = { u -> u.messageId?.let { composer.edit(EditTarget(it, u.attachments), u.text) } },
+            onRetry = { u -> u.messageId?.let { vm.resend(it, io.github.jackwener.dsh.core.session.ForkKind.Retry, u.text, emptyList(), u.attachments) } },
+            onFork = { turns, t -> vm.fork(io.github.jackwener.dsh.core.session.Forks.nextMessageId(turns, t)) },
+        )
+    }
     LaunchedEffect(prefill, live.sessionId) {
         if (live.sessionId == vm.id) prefill?.let { composer.text = it; vm.prefill.value = null }
     }
@@ -151,7 +160,8 @@ private fun ConversationPane(vm: HomeViewModel, onMenu: () -> Unit, onSettings: 
                     isEmpty -> EmptyHero(vm, composer, settings, live, conv, onAutomation, onSettings)
                     // One list state per session, so positions never leak across sessions.
                     else -> streams.SaveableStateProvider("chat/$sid") {
-                        ChatStream(conv, live, settings.workDetails, rememberLazyListState(), onInspect = vm::inspect, onRetry = vm::retry, onContinue = { vm.continueTask() }, onOpenSettings = { onSettings(it) }, modifier = Modifier.fillMaxSize())
+                        ChatStream(conv, live, settings.workDetails, rememberLazyListState(), onInspect = vm::inspect, onRetry = vm::retry, onContinue = { vm.continueTask() }, onOpenSettings = { onSettings(it) }, modifier = Modifier.fillMaxSize(),
+                            actions = actions, lineage = lineage, onOpenSession = vm::open)
                     }
                 }
             }
@@ -208,8 +218,11 @@ fun ComposerSlot(vm: ConversationController, composer: ComposerState, settings: 
     val send = {
         val text = prepare(composer.outgoingText(context))
         val images = composer.images.map { it.mime to it.base64 }
+        val editing = composer.editing
         composer.clear()
-        vm.send(text, images, now = settings.busySend == io.github.jackwener.dsh.core.data.BusySend.Steer)
+        // 编辑 (#2): the edited message goes to a new version of the conversation.
+        if (editing != null) vm.resend(editing.messageId, io.github.jackwener.dsh.core.session.ForkKind.Edit, text, images, editing.attachments)
+        else vm.send(text, images, now = settings.busySend == io.github.jackwener.dsh.core.data.BusySend.Steer)
     }
     val voice = io.github.jackwener.dsh.feature.voice.rememberVoiceInput(composer) {
         // Attachments still loading: leave the spoken text in the draft for a manual send.
