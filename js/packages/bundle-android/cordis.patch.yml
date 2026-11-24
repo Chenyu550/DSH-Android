@@ -48,7 +48,7 @@
     - id: android-extensions
       name: '@dsh-android/plugin-extensions'
 
-# rc.5's official DeepSeek routes follow the account's `/models` listing and wait up to
+# dsh's official DeepSeek routes follow the account's `/models` listing and wait up to
 # 5 s for it on the first connect: a network round trip on every cold start. Wait 1 ms:
 # the first connect uses the built-in catalog, the listing loads in the background and
 # applies from then on.
@@ -66,9 +66,20 @@
   config:
     catalogDescriptionMaxLength: 250
 
+# Web search on every route through DeepSeek Messages search (DEEPSEEK_API_KEY, or the account
+# token on the account route), as before dsh 0.2.2: its default for third-party routes is the
+# DeepSeek Search API, which charges per search (ENGINE-CONTRACT §1.1).
+- id: web
+  config:
+    searchProvider: deepseek-official
+    fetchProvider: http
+
 # ── rows a phone does not need ───────────────────────────────────────────────
-# Mounted on demand by android-extensions instead (see above).
+# Mounted on demand by android-extensions instead (see above). dsh-sdk-app turns the plugin
+# manager's agent tools on; on the phone plugins install only through the app's gate.
 - id: plugin-manager
+  disabled: true
+- id: tool-plugin-manager
   disabled: true
 # Telemetry export is off on the phone (privacy; no feedback UI wired to it).
 - id: session-telemetry-otel
@@ -80,10 +91,37 @@
   disabled: true
 - id: tool-workflow
   disabled: true
-# Office skills / primary-runtime dependency tooling (desktop only; also gated by env).
+# Office skills and tools / primary-runtime dependency tooling (desktop only: Office Kit runs
+# LibreOffice, whose WebAssembly build is not shipped).
 - id: skill-office
   disabled: true
+- id: office-kit
+  disabled: true
+- id: tool-office
+  disabled: true
 - id: workspace-dependencies
+  disabled: true
+# Desktop-host rows dsh-sdk-app mounts: the browser RPC transport and uploads (`connection` would
+# also serve its /api on android-account's loopback login server), the workspace registry, @-mention
+# file indexes, and file cards (`present` + its link guidance: the app shows neither presented
+# files nor links to its private files).
+- id: connection
+  disabled: true
+- id: file-upload
+  disabled: true
+- id: workspace
+  disabled: true
+- id: file-reference-local
+  disabled: true
+- id: present
+  disabled: true
+- id: deliverable-file-references
+  disabled: true
+# Durable reminders (schedule_*): they fire only while the engine runs, and the app stops it when
+# idle. Automations are the app's rules (rule_create), which wake the engine themselves.
+- id: schedule
+  disabled: true
+- id: tool-schedule
   disabled: true
 # Same-session goals (create_goal / update_goal, /goal, automatic goal rounds). A goal round is
 # a new turn started while the session is idle: on the phone each round ended the run in the app,
@@ -109,20 +147,15 @@
 - id: llm-pi-ai
   disabled: true
 
-# ── rows dsh-base leaves to the Web presets ─────────────────────────────────
+# ── rows dsh-sdk-app mounts ─────────────────────────────────────────────────
 # Current date/time/zone on each request (relative tasks: "alarm tomorrow 7:00", "SMS from the
 # last hour", rule_create epochs). The zone is the process zone: the app sets TZ /
 # DSH_ANDROID_TZ (android-env applies it); SDK prompts carry it as clientTimeZone (patch 11).
-- insert:
-    - id: time-context
-      name: '@deepseek-ai/dsh-time-context'
-      config:
-        refreshIntervalMs: 600000
-    # Structured clarifying questions (ask_user_question → user-question/ask, patch 08); the app
-    # shows tap-to-choose cards. Unattended runs get automatic "nobody is available" answers
-    # from plugin-guard.
-    - id: tool-ask-user
-      name: '@deepseek-ai/dsh-tool-ask-user'
+# `tool-ask-user` (ask_user_question → user-question/ask) needs nothing here: the app shows
+# tap-to-choose cards; unattended runs get automatic "nobody is available" answers from plugin-guard.
+- id: time-context
+  config:
+    refreshIntervalMs: 600000
 
 # ── third-party model providers ─────────────────────────────────────────────
 # @snnh/dsh-llm-service-lite (vendored, MIT): OpenAI-compatible endpoints with no vendor SDK.

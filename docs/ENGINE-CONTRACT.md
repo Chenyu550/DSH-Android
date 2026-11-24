@@ -136,9 +136,10 @@ Errors: a third-party turn that fails because the account may not use the model 
 and message `llm-service-lite: model "<id>" is not available to this account: <server text>` (not retried; the app
 says the model is not enabled for the account instead of blaming the key).
 
-Web search (`web_search`, DeepSeek search) needs a DeepSeek credential: `DEEPSEEK_API_KEY`, or the account login while
-the session runs on `deepseek-account`. The app therefore turns the tool off when a third-party model is selected and
-no API key is stored; `web_fetch` stays.
+Web search (`web_search`, DeepSeek Messages search on every route: bundle-android pins `web.searchProvider` to
+`deepseek-official`, which DeepSeek does not bill per search) needs a DeepSeek credential: `DEEPSEEK_API_KEY`, or the
+account login while the session runs on `deepseek-account`. The app therefore turns the tool off when a third-party
+model is selected and no API key is stored; `web_fetch` stays.
 
 The patch layer and the `DSH_ANDROID_KEY_*` environment are read once per process: when either changes (the app
 compares a fingerprint of the rendered patch + keys) the engine restarts the next time it is idle, like a route change.
@@ -208,18 +209,24 @@ an offset past its log (`LogSeqs`), never treating a seq as a cross-generation i
   conversation.** `provider` / `model` / `reasoningEffort` follow `initialize`'s rules (DeepSeek: the key or account
   route and its Effort id; third-party: the level only while `android/models/reasoning` lists it). The engine validates
   it like `initialize` (dsh `llm.resolveCallConfig`: a registered route, an accepted level; else a JSON-RPC error, which
-  fails the prompt) and installs it on the conversation's root Agent with dsh's Agent-scoped selection
-  (`installModelSelection` from `@deepseek-ai/dsh-agent`, the mechanism behind the Web host's `session/selectModel`):
-  it routes the Agent's next model request (between steps, also inside a running turn), names the model in the system
-  prompt, and adds dsh's switch notice (`user/message` `source { kind: 'model-selection', form: 'notice', summary:
-  'from → to' }`, the app shows a quiet line) to the first request after a provider/model change. Subagents take the
-  route of their parent's latest request (dsh-subagent). Sent before the Agent exists, it is installed at
-  `agent/created` (new or resumed). `model: null` forgets it. Not persisted in the engine: the app re-sends it.
+  fails the prompt) and records it on the conversation's root Agent with dsh's model selection (`agent.model.select`,
+  what the Web host's `session/selectModel` does; a `model/selection` session event the app does not log): it routes
+  the Agent's next model request (between steps, also inside a running turn), names the model in the system prompt,
+  and dsh's `installModelSelection` adds its switch notice (`user/message` `source { kind: 'model-selection', form:
+  'notice', summary: 'from → to' }`, the app shows a quiet line) to the first request after a provider/model change.
+  Subagents take the route of their parent's latest request (dsh-subagent). Sent before the Agent exists, it is
+  selected at `agent/created` (new or resumed). `model: null` goes back to the Agent's creation route (`initialize`'s).
+  A resumed session starts on `initialize`'s route again (the SDK server selects it): the app re-sends its own.
   A conversation whose own model is no longer available (provider removed or disabled, model dropped) runs on the
   default, which then becomes its own; the composer says so before the next message.
 - `android/session/mode { sessionId, mode: null | SessionMode }` → `{}` (plugin-mode, through patch 10; §2.5). **The app
   sends it right after `android/session/permission`, before each `session/prompt`** (also after a resume).
-- handles server requests `approval/request` (answer `allowed-once | rejected | cancelled`; requests from subagents carry `rootSessionId`, which owns the approval) and `user-question/ask` (`ask_user_question` tool, plan mode); consumes `session.event` / `session.status` notifications.
+- handles server requests `approval/request` `{ sessionId, toolName, callId?, reason? }` (answer `allowed-once |
+  rejected | cancelled`) and `user-question/ask` `{ requestId, sessionId, questions }` (`ask_user_question` tool, plan
+  mode; `user-question.cancelled { requestId }` withdraws one); consumes `session.event` / `session.status`
+  notifications. Both requests come from a conversation's root Agent only: dsh pins a subagent's approval policy to
+  `never` (a call that needs approval is refused in the engine and the subagent reports it to its parent) and refuses
+  its questions (js/test/sdk-requests.test.mjs).
 - Approval friction (plugin-guard, before anything reaches the app): read-only shell commands (`ls`, `cat`, `grep`,
   `getprop`, `dumpsys`, `settings get`, `pm list`, … with no output redirect; hardline-parsed) run without asking in
   every mode; `write`/`edit` inside `HOME`/`TMPDIR` run without asking unless the mode is 仅可查看 or unknown; a
@@ -232,11 +239,10 @@ an offset past its log (`LogSeqs`), never treating a seq as a cross-generation i
 - Unattended (`auto_…`) sessions: the model gets a runtime-context note (nobody is watching, only the rule's tools run,
   unlock-waiting tools listed from metadata, finish with a notification-sized result); `user-question/ask` is never sent
   for them — plugin-guard answers "nobody is available" itself. No engine-side auto-allow of writes there.
-- dsh 0.2.1-rc.5's SDK server (the 0.2.1 release line) lacks SDK approval/question requests; `js/patches/08` backports them from the upstream development line (drop once a bundled dsh ships them).
 
 ### 2.4 Account (DeepSeek login) — `@dsh-android/plugin-account`, patch 10
 
-dsh-base already mounts the account provider (`deepseek-account` → `@deepseek-ai/dsh-deepseek-account-platform`: system
+dsh-base already mounts the account provider (`deepseek-account` → `@deepseek-ai/dsh-deepseek-account`: system
 browser OAuth + PKCE S256 against `https://platform.deepseek.com`, grant in `$DSH_HOME`'s credential store, `resolveToken`
 for model / web-search requests to `api.deepseek.com`, profile / balance, 401 → session expired, sign-out with background
 revocation) and the `deepseek-account` model route. dsh's account RPC is a Web (Typert) controller, so the plugin
@@ -306,7 +312,8 @@ interface SessionMode {          // `mode` of android/session/mode; null = unres
   tools?: string[]               // built-in categories offered; absent = all
                                  //   shell: bash, pwsh, terminal_*, job_*   files_read: read, read_image, glob, grep
                                  //   files_write: write, edit   web: web_search, web_fetch
-                                 //   subagent: subagent, subagent_fork, list_subagent_models, send_message, interrupt_agent, list_agents
+                                 //   subagent: subagent, subagent_fork, list_subagent_models, send_message, interrupt_agent, list_agents,
+                                 //     wait_agent, team_task_* (agent teams)
                                  //   extensions: tools of third-party plugins (js patch 19 ownership) and of MCP servers (mcp__*)
   skills?: boolean               // false hides the `skill` tool (and with it dsh's skill catalog); default true
 }
@@ -342,7 +349,8 @@ them schemas. plugin-mode (`deferred.js`) therefore loads definitions on demand,
 - **Always loaded** (when the mode offers them): bash, read, read_image, write, edit, glob, grep, web_search, web_fetch,
   skill, ask_user_question, todo_write, the goal tools, `load_tools`, and any built-in not listed below.
 - **Deferred**: every device tool, every third-party plugin / MCP tool, and the built-in groups `jobs` (job_*),
-  `subagents` (subagent, subagent_fork, list_subagent_models, send_message, interrupt_agent, list_agents) and `session`
+  `subagents` (subagent, subagent_fork, list_subagent_models, send_message, interrupt_agent, list_agents, wait_agent,
+  team_task_*) and `session`
   (working_directory, exit_plan_mode). They are hidden with the same per-agent `tools.restrict({ deny })` as excluded
   tools and listed in a per-agent section `android:deferred-tools` (order 160; `# Tools loaded on demand`, one line per
   group: id, short summary, tool names; extension tools with a one-sentence hint). Fewer than 3 deferrable tools are
@@ -483,10 +491,14 @@ later, or send an SMS twice after a retry). The rules:
   descriptors; unattended-run context; post-turn reflection for the App 经验库 (`experience.js`: one tool-free call
   with the session's model over a ≤3k-char step trace, metered into the budget ledger); dsh `ctx.logger` warnings/errors mirrored to stderr (`[dsh:<name>] warn: …` in
   engine.log); third-party models' reasoning levels for the composer (`android/models/reasoning`, §2).
-- Profile also mounts `dsh-time-context` and `dsh-tool-ask-user`, and disables `otel` and `llm-pi-ai` (cold start:
+- dsh **0.2.2-rc.5** (pinned exactly in `js/engine/package.json`). The profile keeps dsh-sdk-app's `dsh-time-context` and
+  `dsh-tool-ask-user`, and disables `otel` and `llm-pi-ai` (cold start:
   ~1000 → ~500 modules at boot; build-engine prunes the provider SDKs only pi-ai reaches). Third-party models go
   through `llm-service-lite` instead (`@snnh/dsh-llm-service-lite` 0.2.1, MIT, vendored as built in
   `js/packages/llm-service-lite/`: one ~220 KB module + `eventsource-parser`, no vendor SDK), mounted dormant: no
   route until the user patch layer (§1.1) supplies providers.
-- Profile `android`: dsh-base minus web-app/HMR/office/voice/inspector/browser-use/ssh/experimental bundles; shell → `/system/bin/sh`; DeepSeek web search on.
-- `patches/`: platform `android` support (flock loader → `DSH_NATIVE_DIR`, require-builtin → `--expose-internals`), `bash -c` → `/system/bin/sh -c`, attachment hard-link → copy fallback, ripgrep path → `PATH`, android profile template, SDK approval/user-question backport, sharp wasm, SDK extension methods, SDK prompt time zone; sandbox chain: none on android (approval-only). node-pty is not patched (no terminal row is mounted; `libdsh_pty.so` is unused).
+- Profile `android`: dsh-base + dsh-sdk-app minus HMR, Office, schedules, the plugin manager's agent tools, desktop-host
+  rows (browser connection, uploads, workspaces, file references, `present`) and experimental bundles; shell →
+  `/system/bin/sh`; DeepSeek web search on, through DeepSeek Messages search on every route (`web.searchProvider:
+  deepseek-official`; dsh 0.2.2's default for non-DeepSeek routes is the per-search-billed DeepSeek Search API).
+- `patches/`: platform `android` support (flock loader → `DSH_NATIVE_DIR`, require-builtin → `--expose-internals`), `bash -c` → `/system/bin/sh -c`, attachment hard-link → copy fallback, ripgrep path → `PATH`, android profile template, sharp wasm, SDK extension methods, SDK prompt time zone, SDK prompt steer, tool/command owners, plugin-market fetch hook; sandbox chain: none on android (approval-only). node-pty is not patched (no terminal row is mounted; `libdsh_pty.so` is unused).

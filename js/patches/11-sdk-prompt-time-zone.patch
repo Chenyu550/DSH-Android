@@ -1,8 +1,8 @@
 --- a/@deepseek-ai/dsh-sdk-jsonrpc-server/lib/index.js
 +++ b/@deepseek-ai/dsh-sdk-jsonrpc-server/lib/index.js
-@@ -191,9 +191,13 @@
- 		this.assertLiveAgent(rec, params.sessionId);
+@@ -508,9 +508,13 @@
  		const content = await durablePromptContent(this.ctx, params.contentBlocks);
+ 		this.lifetime.signal.throwIfAborted();
  		this.assertLiveAgent(rec, params.sessionId);
 +		// DSH-Android: dsh-time-context reads the user's zone from a user-rpc source (the Web
 +		// host's clientTimeZone); SDK prompts carry none, so the model was told to ask the user
@@ -15,7 +15,7 @@
  		});
  		rec.handle.agent.followup(message);
  		return { messageId: message.id };
-@@ -456,6 +460,17 @@
+@@ -811,6 +815,17 @@
  	}
  };
  //#endregion

@@ -31,7 +31,7 @@ const BUILTIN_GROUPS = Object.freeze({
   },
   subagents: {
     summary: 'delegate work to subagents; start independent ones together in one message',
-    test: n => ['subagent', 'subagent_fork', 'list_subagent_models', 'send_message', 'interrupt_agent', 'list_agents'].includes(n),
+    test: n => ['subagent', 'subagent_fork', 'list_subagent_models', 'send_message', 'interrupt_agent', 'list_agents', 'wait_agent'].includes(n) || n.startsWith('team_task_'),
   },
   session: {
     summary: 'working directory, plan mode',

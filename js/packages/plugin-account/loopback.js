@@ -1,4 +1,4 @@
-// Loopback login server: the `webServer` seat dsh's deepseek-account-platform
+// Loopback login server: the `webServer` seat dsh's deepseek-account
 // registers its `/oauth/callback` route on. dsh-host-webserver is a Web
 // composition (gzip, index injection, TLS, fallback dist); the phone needs
 // only one exact route on 127.0.0.1 with an OS-assigned port, opened when the

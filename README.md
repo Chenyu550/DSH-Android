@@ -11,7 +11,7 @@
 [![Release](https://img.shields.io/github/v/release/jackwener/DSH-Android?style=flat-square&color=4D6BFE&label=release)](../../releases/latest)
 ![Android](https://img.shields.io/badge/Android-10%2B-34A853?style=flat-square&logo=android&logoColor=white)
 ![ABI](https://img.shields.io/badge/ABI-arm64--v8a-555?style=flat-square)
-![Engine](https://img.shields.io/badge/engine-dsh%200.2.1%20%C2%B7%20Node%2024-4D6BFE?style=flat-square)
+![Engine](https://img.shields.io/badge/engine-dsh%200.2.2%20%C2%B7%20Node%2024-4D6BFE?style=flat-square)
 ![Root](https://img.shields.io/badge/root-不需要-34A853?style=flat-square)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)
 

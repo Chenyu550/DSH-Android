@@ -60,7 +60,6 @@ import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -736,8 +735,9 @@ class SessionStore @Inject constructor(
     }
 
     private suspend fun approve(p: JsonObject): String {
-        // Subagent requests carry the child session plus rootSessionId; approvals belong to the root conversation.
-        val sessionId = (p["rootSessionId"] ?: p["sessionId"])?.jsonPrimitive?.contentOrNull ?: return "rejected"
+        // Approvals belong to the root conversation. dsh sends them for root sessions only (a subagent's
+        // approval policy is pinned to `never`); a child id would resolve to its root here.
+        val sessionId = rootOf(p.s("sessionId") ?: return "rejected")
         val tool = p.s("toolName") ?: return "rejected"
         val ruleId = ruleIdOfSession(sessionId)
         if (ruleId != null) {
@@ -1059,8 +1059,8 @@ class SessionStore @Inject constructor(
         val UNLOGGED = setOf("request/header", "request/context", "system/message", "developer/message", "session/end-seed",
             // The title call's request (#89): it repeats the first message and reply.
             "session/title-llm-request",
-            // plugin-mode's selection record; the session row already holds the mode.
-            "plugin:android-mode/selected")
+            // plugin-mode's selection record and dsh's model selection (android/session/model); the session row holds both.
+            "plugin:android-mode/selected", "model/selection")
 
         /** Maps a PermissionMissingException description to a PermissionCatalog id. */
         fun permissionIdFor(what: String): String? {

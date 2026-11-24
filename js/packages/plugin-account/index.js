@@ -2,7 +2,7 @@
 // (docs/ENGINE-CONTRACT.md §2.4).
 //
 // dsh-base already mounts the account stack: `deepseek-account`
-// (@deepseek-ai/dsh-deepseek-account-platform: system-browser OAuth + PKCE
+// (@deepseek-ai/dsh-deepseek-account: system-browser OAuth + PKCE
 // against platform.deepseek.com, grant in the local credential store,
 // resolveToken for model/search requests, profile/balance, expiry, sign-out)
 // and the `deepseek-account` model route (@deepseek-ai/dsh-llm-deepseek-account).
@@ -27,7 +27,6 @@
 //   account.changed {view}  account.session-expired {}  account.signed-out {}
 //   account.model-sign-in-required {}  account.callback {result}
 import { APP_IDENTITY } from '@deepseek-ai/dsh-llm'
-import { isRunningAccountTask } from '@deepseek-ai/dsh-deepseek-account'
 import { createLoopbackServer } from './loopback.js'
 
 export const name = 'android-account'
@@ -109,7 +108,7 @@ export function apply(ctx, config = {}) {
       return viewOf(await account().cancelSignIn(params.attemptId))
     }],
     ['account/sign-out', async params => viewOf(await account().signOut(clientMetadata(params?.client, locale())))],
-    ['account/tasks/running', () => ({ running: (ctx.get('agents')?.list() ?? []).some(isRunningAccountTask) })],
+    ['account/tasks/running', () => ({ running: account().hasRunningAccountTasks() })],
   ])
   const extensions = { resolve: method => methods.get(method), methods: () => [...methods.keys()] }
   ctx.provide('sdkExtensions', extensions)
@@ -121,7 +120,8 @@ export function apply(ctx, config = {}) {
   ctx.effect(() => {
     const lifetime = new AbortController()
     ;(async () => {
-      for await (const state of account().watch(lifetime.signal)) notify('account.changed', { view: viewOf(state) })
+      // Each update is `{ type: 'snapshot' | 'credentials-changed', state }`, a complete state either way.
+      for await (const update of account().watch(lifetime.signal)) notify('account.changed', { view: viewOf(update.state) })
     })().catch(error => { if (!lifetime.signal.aborted) log('warn', `account stream ended: ${error?.message ?? error}`) })
     return () => lifetime.abort()
   }, 'android-account: state stream')
