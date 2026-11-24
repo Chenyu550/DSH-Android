@@ -30,7 +30,7 @@ Environment (set with `Os.setenv` before start):
 | Var | Value |
 |---|---|
 | `DSH_HOME` | `<filesDir>/dsh-home` |
-| `HOME` | `<filesDir>/home` (also the default workspace / cwd) |
+| `HOME` | `<filesDir>/home` (also the default workspace / cwd; the user's "DSH" folder in the system Files app, #76) |
 | `TMPDIR` | `<cacheDir>/tmp` |
 | `SHELL` | `/system/bin/sh` |
 | `PATH` | `<filesDir>/bin:/system/bin:/system/xbin` (`files/bin/rg` → `<nativeLibraryDir>/librg.so`, `files/bin/node` → `<nativeLibraryDir>/libdshnode.so`) |
@@ -201,6 +201,45 @@ an offset past its log (`LogSeqs`), never treating a seq as a cross-generation i
   engine runs. dsh's user title pins the conversation (a title call still waiting is dropped); `applied: false` when
   this process does not hold the conversation. The app keeps its own record either way (`app/title` event: engine
   `session/title` events never replace a title the user set).
+- `android/session/fork { sessionId, childSessionId, beforeMessageId? }` → `{ sessionId, inherited, closers }`
+  (plugin-guard `session-fork.js`, through patch 10; #2): 编辑 / 重试 / 从这里分叉. dsh models no session tree, only
+  boundary forks (the Web host's `session/fork`): the child is a new ordinary session seeded with an exact prefix of the
+  source's log by dsh-session's `buildForkSeed` (copied events, a `session/end-seed` marker, and for a cut inside a turn
+  synthetic `forked` tool results and step/turn closers), validated like a live Session and written straight to dsh's
+  session store (`sessionPersistence.create` + append + flush, as dsh-deepseek-chat-import stores a session). It is
+  not opened: the app's next `session/prompt` on it is refused as `already exists` until it is `session/resume`d, like
+  a session of an earlier engine process (the app resumes it because it logged its copy of the prefix). The source is
+  read live (flushed first) or from the store, and is never changed. The cut: `beforeMessageId` = the `id` of a human
+  `user/message` (`source.kind: 'user'`); the child keeps everything before the turn that message opened and before
+  the `agent/inbox/spliced` that queued it, or, for a message steered into a running turn, everything before the
+  message. Without it the child keeps the whole log. `inherited` = source events copied (0: nothing stored, the app's
+  prompt creates the child); `closers` = the child's synthetic events after the marker, which the app logs after its
+  copy. Errors: unknown source or message, `childSessionId` already exists.
+  **App side** (`SessionStore.resend` / `fork`, `core/session/Forks.kt`): refused while the source runs. The app copies
+  its own log up to the same cut (`Forks.cut`, the same rule over its log) into a new row (`sessions.forkOf`,
+  `forkKind`: `edit` | `retry` | `fork`; preset, mode, model, mute copied; never an automation run: a fork of an
+  `auto_…` run is the user's own conversation), shows it at once, resumes the source if an earlier engine process had
+  it open (dsh migrates and repairs a stored log on resume), then calls the method (skipped when the copy holds no
+  engine event). 编辑 / 重试 then send the edited / same text with the original message's attachments as dsh stored
+  them (`{ type: 'image' | 'file', attachment }` blocks, accepted by `session/prompt` as they are) plus any new images.
+  An edit or retry stands in for its source in the session list while it is not archived or deleted; both show a
+  line linking to the other. A failed fork discards the new row and goes back to the source (the edited text returns
+  to its composer).
+- `session/working-directory/set { sessionId, path }` → `{ cwd }` (dsh 0.2.2, #76): 工作目录 in the composer (a folder of
+  HOME picked in the system folder picker through the app's documents provider). dsh keeps it per session in the log
+  (`working-directory/change`) and tells the model with a `user/message` `source { kind: 'working-directory' }` at its next
+  step (the chat shows it as a quiet 工作目录 line); the agent's own `working_directory` tool changes the same directory. A
+  conversation the engine does not have yet gets it right before its first `session/prompt` (after `android/session/model`).
+- `android/reasoning/translate { text, targetLanguage }` → `{ text, provider }` | `{ error: { code, message } }`
+  (plugin-guard `translate.js`, row `android-translate`, #15): 翻译 under an expanded 思考 row. dsh's `translator`
+  service (`@deepseek-ai/dsh-experimental-translator`, row `translator`) sends the text to Bing's anonymous Edge endpoint,
+  else Google's when Bing cannot be reached (no key, no model call, no session records); text over its 4000-character
+  request limit goes in paragraph / line pieces. `targetLanguage` is the UI language (`zh-Hans`, `zh-Hant`, `en`, `ru`, …).
+  `code` is dsh's `TranslationErrorCode` (`TRANSLATION_REQUEST_FAILED` / `_TIMEOUT` / `_HTTP_ERROR`: unreachable;
+  `_INVALID_RESPONSE`: unreadable answer). The app sends it on the control channel (never restarts a running engine),
+  keeps results per text and language for the process, and offers 翻译 only when the text's dominant script is not the
+  UI language's (DeepSeek's Chinese reasoning for a Chinese UI has none). dsh's own consumer
+  (`dsh-experimental-client-ui-cot-translation`, a web-client Remote) is pruned.
 - `android/session/model { sessionId, provider, model, reasoningEffort? } | { sessionId, model: null }` →
   `{ selected: { provider, model, reasoningEffort? } }` (plugin-guard `session-model.js`, through patch 10; #53). Each
   conversation's own model (the app's `sessions.modelProvider/modelId/modelEffort`: a copy of the default taken at its
@@ -551,6 +590,10 @@ the capability bridge, `session/prompt` `mode: 'steer'`), so the app never sends
 permission mode is applied only app-side (`SessionStore.approve` answers `approval/request` by the conversation's
 preset), a message sent while a remote turn runs waits in the app queue, there is no model / mode picker, no device
 tools, no file attachments (images are sent inline), and phone-network waiting (§2 `waitForNetwork`) does not apply.
+编辑 / 重试 / 分叉 (#2) need `android/session/fork`, so remote conversations offer none (SessionStore refuses as a
+backstop). 工作目录 (#76) picks a folder of this phone, so it is hidden there (the host entry's directory applies;
+`session/working-directory/set` itself is stock). Reasoning translation (#15) is text-only and keeps using the
+embedded engine (`android/reasoning/translate`), also for remote conversations.
 `approval/request`, `user-question/ask`, `session.event`, `session.status`, `subagent.started`, `session/resume` and
 `shutdown` are used exactly as with the embedded engine.
 
@@ -568,6 +611,6 @@ DshExited, Initialize, Disconnected, HostMissing) and logged as `app/error { kin
 **Storage**: host entries in the DataStore `remote_hosts` (JSON: name, address, port, user, auth kind, workdir,
 command, provider, model, share-key switch, trusted host key) plus the active workspace; password, private key,
 passphrase and the environment text in `SecretStore` (`remote-<id>-password|key|passphrase|env`). Each conversation
-row records its runtime in `sessions.hostId` (null = this phone; Room v6). Deleting a host entry deletes its secrets
+row records its runtime in `sessions.hostId` (null = this phone; Room v7). Deleting a host entry deletes its secrets
 and its conversations on the phone; dsh's own session logs on the computer stay.
 

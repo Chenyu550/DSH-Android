@@ -355,6 +355,11 @@ private fun AgentSection(vm: SettingsViewModel, onAppNotes: () -> Unit) {
     SettingsCard(Modifier.padding(top = 8.dp)) {
         SettingsRow(stringResource(R.string.app_notes), stringResource(R.string.app_notes_desc), divider = false, onClick = onAppNotes,
             trailing = { DIcon(R.drawable.dsw_chevron_right_outline, size = 14.dp, tint = c.labelTertiary) })
+        // The agent's working directory in the system Files app (#76).
+        SettingsRow(stringResource(R.string.workspace_open), stringResource(R.string.workspace_open_desc), onClick = {
+            if (!io.github.jackwener.dsh.core.platform.Workspace.openInFiles(context))
+                android.widget.Toast.makeText(context, R.string.workspace_no_files_app, android.widget.Toast.LENGTH_LONG).show()
+        }, trailing = { DIcon(R.drawable.dsw_folder_open_outline, size = 14.dp, tint = c.labelTertiary) })
     }
     SettingsGroupTitle(stringResource(R.string.set_agent_loop))
     SettingsCard {

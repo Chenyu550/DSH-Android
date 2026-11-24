@@ -50,6 +50,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -118,6 +119,9 @@ class SessionStore @Inject constructor(
     private val sessionGrants = ConcurrentHashMap<String, MutableSet<String>>()
     /** sessionId -> engine generation it was last resumed/created in. */
     private val resumedIn = ConcurrentHashMap<String, Int>()
+    /** 工作目录 chosen for conversations that have not reached the engine yet (#76); sent before their first prompt. */
+    private val _pendingWorkingDirectories = MutableStateFlow<Map<String, String>>(emptyMap())
+    val pendingWorkingDirectories: StateFlow<Map<String, String>> = _pendingWorkingDirectories
     private val logSeqs = LogSeqs()
     private val localSeq = AtomicLong(-System.currentTimeMillis())
     /** Prompt attempts per session; an `app/error` is reported once per attempt (see [appendLocal]). */
@@ -146,7 +150,16 @@ class SessionStore @Inject constructor(
     val status: StateFlow<Map<String, RowStatus>> = _status.asStateFlow()
 
     /** The session list (drawer, quick panel): [SessionVisibility.listed], the rule notifications share. */
-    val conversations: Flow<List<SessionEntity>> = dao.observeTopLevel().map { rows -> rows.filter(SessionVisibility::listed) }
+    val conversations: Flow<List<SessionEntity>> = dao.observeTopLevel().map { rows -> Forks.listed(rows.filter(SessionVisibility::listed)) }
+
+    /** Where [sessionId] stands among its forks (#2): its source, and its latest edit / retry if it was replaced. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun lineage(sessionId: String): Flow<Lineage> = dao.observe(sessionId).flatMapLatest { row ->
+        val source = row?.forkOf?.let { dao.observe(it) } ?: kotlinx.coroutines.flow.flowOf(null)
+        combine(source, dao.observeForks(sessionId)) { src, forks ->
+            Lineage(ForkKind.of(row?.forkKind), src, forks.firstOrNull { !it.archived && ForkKind.of(it.forkKind)?.replacesSource == true })
+        }
+    }
 
     init {
         // Rows still marked running belong to a previous app process (both processes died): the
@@ -323,7 +336,7 @@ class SessionStore @Inject constructor(
      * engine problems: a failure becomes an `app/error` record in the log (shown as a failed
      * turn with a retry affordance) and the session goes back to idle.
      */
-    suspend fun prompt(sessionId: String, text: String, ruleId: Long? = null, images: List<Pair<String, String>> = emptyList()) {
+    suspend fun prompt(sessionId: String, text: String, ruleId: Long? = null, images: List<Pair<String, String>> = emptyList(), attachments: List<JsonObject> = emptyList()) {
         val now = System.currentTimeMillis()
         val existing = dao.get(sessionId)
         val live = flowOf(sessionId).value
@@ -368,10 +381,14 @@ class SessionStore @Inject constructor(
                 // Its level is checked against what this engine reported (refreshed at start).
                 sendModel(sdk, sessionId, engine.sessionRoute(model))
             }
+            // Stock dsh's session/working-directory/set (a remote conversation never has one pending: no phone folder there, #51).
+            sendPendingWorkingDirectory(sdk, sessionId)
             val request = buildJsonObject {
                 put("sessionId", sessionId)
                 putJsonArray("contentBlocks") {
                     addJsonObject { put("type", "text"); put("text", text) }
+                    // An edited / retried message's own attachments (#2): dsh's durable references, sent as they were stored.
+                    attachments.forEach { add(it) }
                     images.forEach { (mime, data) -> addJsonObject { put("type", "image"); put("mimeType", mime); put("data", data) } }
                 }
             }
@@ -389,6 +406,7 @@ class SessionStore @Inject constructor(
                     sendMode(sdk, sessionId, flowOf(sessionId).value.modeId)
                     sendModel(sdk, sessionId, engine.sessionRoute(model))
                 }
+                sendPendingWorkingDirectory(sdk, sessionId)
                 sdk.request("session/prompt", request)
             }
         } catch (e: RemoteException) {
@@ -593,6 +611,35 @@ class SessionStore @Inject constructor(
         if (flowOf(sessionId).value.hostId == null) engine.sdkIfReady()?.let { sendPreset(it, sessionId, preset) }
     }
 
+    /**
+     * The conversation's working directory (#76, 工作目录): dsh's per-session directory
+     * (`session/working-directory/set`), kept in the session's log, so later turns and engine restarts
+     * keep it; the agent's `working_directory` tool changes the same one. A conversation the engine
+     * does not have yet gets it right before its first prompt.
+     */
+    suspend fun setWorkingDirectory(sessionId: String, path: String): Result<Unit> = runCatching {
+        if (flowOf(sessionId).value.events.none { it.seq >= 0 }) {
+            _pendingWorkingDirectories.update { it + (sessionId to path) }
+            return@runCatching
+        }
+        val sdk = engine.sdk(engine.sessionRoute(runModel(sessionId)))
+        engine.markSessionOpened()
+        val gen = engine.generation
+        if (resumedIn[sessionId] != gen) {
+            check(resume(sdk, sessionId)) { "session/resume failed" }
+            resumedIn[sessionId] = gen
+        }
+        sdk.request("session/working-directory/set", buildJsonObject { put("sessionId", sessionId); put("path", path) })
+    }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it; android.util.Log.w(TAG, "working directory of $sessionId", it) }.map { }
+
+    /** Kept when it fails (e.g. #57: the session exists but is not open yet), so the retry after the resume sends it. */
+    private suspend fun sendPendingWorkingDirectory(sdk: JsonRpcPeer, sessionId: String) {
+        val path = _pendingWorkingDirectories.value[sessionId] ?: return
+        runCatching { sdk.request("session/working-directory/set", buildJsonObject { put("sessionId", sessionId); put("path", path) }) }
+            .onSuccess { _pendingWorkingDirectories.update { it - sessionId } }
+            .onFailure { android.util.Log.w(TAG, "session/working-directory/set before the first prompt of $sessionId", it) }
+    }
+
     private suspend fun sendPreset(sdk: JsonRpcPeer, sessionId: String, preset: PermissionPreset) {
         runCatching { sdk.request("android/session/permission", buildJsonObject { put("sessionId", sessionId); put("preset", preset.id) }) }
             .onFailure { android.util.Log.w(TAG, "android/session/permission failed", it) }
@@ -702,6 +749,120 @@ class SessionStore @Inject constructor(
     /** A remote host entry was deleted (#51): its conversations go from this phone (the computer keeps its own logs). */
     suspend fun deleteHostConversations(hostId: String) {
         dao.idsOfHost(hostId).forEach { id -> if (dao.get(id)?.parentId == null) delete(id) }
+    }
+
+    // ---- edit / retry / fork (#2) ----------------------------------------------------------------
+
+    /** Conversations a fork is being made from (one at a time each: a second tap does nothing). */
+    private val forking = ConcurrentHashMap.newKeySet<String>()
+
+    /**
+     * 编辑 / 重试 (#2): a new conversation that is [sessionId] up to the turn [messageId] opened (dsh's fork,
+     * see [ForkKind]), which then sends [text] as its next message, with [kept] (the original message's
+     * attachments, by their dsh reference) and [images] (newly attached). [show] gets the conversation
+     * to show: the new one at once, the source again when the fork fails (said in a toast; an edited
+     * text goes back into the source's composer). Refused while the source runs.
+     */
+    suspend fun resend(sessionId: String, messageId: String, kind: ForkKind, text: String, images: List<Pair<String, String>>,
+                       kept: List<JsonObject>, show: (String) -> Unit): Boolean {
+        val child = branch(sessionId, messageId, kind, show)
+        if (child == null) {
+            if (kind == ForkKind.Edit && text.isNotBlank()) mutate(sessionId) { it.copy(restoredDraft = listOfNotNull(it.restoredDraft, text).joinToString("\n\n")) }
+            return false
+        }
+        prompt(child, text, images = images, attachments = kept)
+        return true
+    }
+
+    /** 从这里分叉 (#2): a new conversation with [sessionId]'s log up to the end of a turn (before [nextMessageId]; null: all of it). */
+    suspend fun fork(sessionId: String, nextMessageId: String?, show: (String) -> Unit): Boolean {
+        val child = branch(sessionId, nextMessageId, ForkKind.Fork, show) ?: return false
+        mutate(child) { it.idle() }
+        if (!hasRunning()) engine.scheduleIdleShutdown()
+        return true
+    }
+
+    /**
+     * Makes the fork: the new conversation's row and its copy of the source's log before the cut ([Forks.cut]),
+     * shown at once as waiting for the engine, then the engine's own fork of the session (`android/session/fork`,
+     * ENGINE-CONTRACT §2). The source is resumed first when an earlier engine process had it open (dsh migrates
+     * and repairs a stored log on resume). The engine's closers of a turn cut in the middle are logged after
+     * the copy. Returns the new id, or null (the new conversation is discarded).
+     */
+    private suspend fun branch(sessionId: String, beforeMessageId: String?, kind: ForkKind, show: (String) -> Unit): String? {
+        val source = flowOf(sessionId).value
+        if (source.running) { toast(context.getString(R.string.fork_busy)); return null }
+        // android/session/fork is plugin-guard's: a computer's stock dsh cannot fork (#51; the UI offers none there).
+        if (source.hostId != null) { toast(context.getString(R.string.fork_failed, context.getString(R.string.remote_fork_unsupported))); return null }
+        val row = dao.get(sessionId)
+        val cut = Forks.cut(source.events, beforeMessageId)
+        if (row == null || cut == null) { toast(context.getString(R.string.fork_failed, "message not found")); return null }
+        if (!forking.add(sessionId)) return null
+        val child = newSessionId()
+        try {
+            val now = System.currentTimeMillis()
+            val copied = source.events.subList(0, cut).toList()
+            dao.upsert(row.copy(id = child, title = if (kind == ForkKind.Fork) context.getString(R.string.fork_title, row.title) else row.title,
+                createdAt = now, updatedAt = now, ruleId = null, running = false, parentId = null, archived = false, unread = false,
+                pinned = row.pinned && kind.replacesSource, forkOf = sessionId, forkKind = kind.id))
+            dao.insertEvents(copied.map { EventEntity(child, it.seq, it.type, it.data.toString(), it.time) })
+            withContext(Dispatchers.IO) { ShotStore.copySession(context, sessionId, child) }
+            ownedRoots += child
+            mutate(child) { it.copy(running = true, startingEngine = true, runStartedAt = now) }
+            show(child)
+            val closers = try {
+                engineFork(sessionId, child, beforeMessageId, inherits = copied.any { it.seq >= 0 })
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w(TAG, "fork of $sessionId failed", e)
+                discard(child)
+                show(sessionId)
+                toast(context.getString(R.string.fork_failed, (e as? NoCredentialsException)?.let { context.getString(R.string.err_no_key) } ?: e.message ?: e.javaClass.simpleName))
+                return null
+            }
+            var seq = (copied.maxOfOrNull { it.seq } ?: -1L).coerceAtLeast(-1L)
+            closers.forEach { c ->
+                val type = c.s("type") ?: return@forEach
+                if (type in UNLOGGED) return@forEach
+                val e = LoggedEvent(++seq, type, c.l("time") ?: now, c.o("data") ?: JsonObject(emptyMap()))
+                dao.insertEvent(EventEntity(child, e.seq, e.type, e.data.toString(), e.time))
+                mutate(child) { s -> s.copy(events = s.events + e) }
+            }
+            android.util.Log.i(TAG, "session $sessionId forked (${kind.id}) into $child: ${copied.size} events, ${closers.size} closers")
+            return child
+        } finally {
+            forking.remove(sessionId)
+        }
+    }
+
+    /** The engine side of [branch]; nothing to do when the kept part never reached the engine. Returns the closers. */
+    private suspend fun engineFork(sessionId: String, child: String, beforeMessageId: String?, inherits: Boolean): List<JsonObject> {
+        if (!inherits) return emptyList()
+        engine.cancelIdleShutdown()
+        val sdk = engine.sdk(engine.sessionRoute(runModel(sessionId)))
+        engine.markSessionOpened()
+        val gen = engine.generation
+        if (resumedIn[sessionId] != gen && resume(sdk, sessionId)) resumedIn[sessionId] = gen
+        val result = sdk.request("android/session/fork", buildJsonObject {
+            put("sessionId", sessionId)
+            put("childSessionId", child)
+            beforeMessageId?.let { put("beforeMessageId", it) }
+        }) as? JsonObject
+        return result?.a("closers")?.mapNotNull { it as? JsonObject }.orEmpty()
+    }
+
+    /** A fork that failed: its conversation goes away without a trace (never shown in the list). */
+    private suspend fun discard(child: String) {
+        deletedIds += child
+        dao.delete(child); dao.deleteEvents(child)
+        ShotStore.deleteSession(context, child)
+        states.remove(child); ownedRoots -= child
+        _status.update { it - child }
+    }
+
+    private suspend fun toast(text: String) = withContext(Dispatchers.Main) {
+        android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_LONG).show()
     }
 
     // ---- SDK callbacks ---------------------------------------------------------------------------
@@ -1133,6 +1294,8 @@ class SessionStore @Inject constructor(
         val UNLOGGED = setOf("request/header", "request/context", "system/message", "developer/message", "session/end-seed",
             // The title call's request (#89): it repeats the first message and reply.
             "session/title-llm-request",
+            // A web search's DeepSeek Messages request (dsh 0.2.2); the web_search call and result show it.
+            "web/deepseek-search-llm-request",
             // plugin-mode's selection record and dsh's model selection (android/session/model); the session row holds both.
             "plugin:android-mode/selected", "model/selection")
 

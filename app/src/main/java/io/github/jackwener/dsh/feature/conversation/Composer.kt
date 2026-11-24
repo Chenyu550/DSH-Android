@@ -107,6 +107,12 @@ data class FileAttachment(val name: String, val path: String, val size: Long)
 
 const val MAX_IMAGES = 4
 
+/**
+ * 编辑 (#2): the message being edited, by its dsh id; its text is the draft. [attachments]: the original's
+ * images and files (dsh's content blocks), sent again unless the user drops them.
+ */
+data class EditTarget(val messageId: String, val attachments: List<kotlinx.serialization.json.JsonObject>)
+
 @Stable
 class ComposerState {
     var text by mutableStateOf("")
@@ -114,8 +120,19 @@ class ComposerState {
     val files = mutableStateListOf<FileAttachment>()
     /** Picked attachments still decoding / copying; Send waits for them. */
     var pending by mutableStateOf(0)
-    val isEmpty get() = text.isBlank() && images.isEmpty() && files.isEmpty()
-    fun clear() { text = ""; images.clear(); files.clear() }
+    /** Editing a sent message (#2): Send makes a new version of the conversation instead of a new message. */
+    var editing by mutableStateOf<EditTarget?>(null)
+    /** Bumped to put the cursor in the editor with the keyboard up (编辑). */
+    var focusRequest by mutableStateOf(0)
+    val isEmpty get() = text.isBlank() && images.isEmpty() && files.isEmpty() && editing?.attachments.isNullOrEmpty()
+    fun clear() { text = ""; images.clear(); files.clear(); editing = null }
+
+    /** 编辑 on a sent message: its text in the editor, its attachments kept. */
+    fun edit(target: EditTarget, text: String) {
+        this.text = text
+        editing = target
+        focusRequest++
+    }
 
     /** The text to send: the draft plus a reference line per attached file. */
     fun outgoingText(context: Context): String = buildString {
@@ -193,6 +210,9 @@ data class ComposerActions(
     val onNewSession: (() -> Unit)? = null,
     val onTrajectory: (() -> Unit)? = null,
     val onAutomation: (() -> Unit)? = null,
+    /** 工作目录 (#76): picks the conversation's folder; [workingDirectory] is the current one as shown. */
+    val onWorkingDirectory: (() -> Unit)? = null,
+    val workingDirectory: String? = null,
 )
 
 /**
@@ -263,6 +283,7 @@ fun Composer(
     // Speech found no recognizer: fall back to typing.
     val noRecognizer = (voice?.state as? io.github.jackwener.dsh.feature.voice.VoiceState.Failed)?.error == io.github.jackwener.dsh.feature.voice.VoiceError.NoRecognizer
     androidx.compose.runtime.LaunchedEffect(noRecognizer) { if (noRecognizer) toKeyboard() }
+    androidx.compose.runtime.LaunchedEffect(state.focusRequest) { if (state.focusRequest > 0) toKeyboard() }
     androidx.compose.runtime.DisposableEffect(voice) { onDispose { voice?.cancel() } }
     // A preset change from elsewhere (session switch, approval) drops any half-finished choice.
     androidx.compose.runtime.LaunchedEffect(preset) { presetOpen = false; confirmFull = false }
@@ -288,6 +309,8 @@ fun Composer(
         }
         actions.onNewSession?.let { add(ComposerCommand("new", stringResource(R.string.new_session), R.drawable.dsw_new_chat_outline, run = it)) }
         actions.onTrajectory?.let { add(ComposerCommand("trajectory", stringResource(R.string.view_trajectory), R.drawable.dsw_inspect_outline, stringResource(R.string.cmd_trajectory_desc), run = it)) }
+        actions.onWorkingDirectory?.let { add(ComposerCommand("cwd", stringResource(R.string.workdir_cmd), R.drawable.dsw_folder_open_outline,
+            stringResource(R.string.workdir_cmd_desc, actions.workingDirectory ?: "~"), run = it)) }
         actions.onAutomation?.let { add(ComposerCommand("automation", stringResource(R.string.automation), R.drawable.dsw_clock_outline, run = it)) }
     }
     // "/" + a word: the matching commands, listed in the card above the editor (#76). Not a popup: a popup
@@ -300,6 +323,7 @@ fun Composer(
         if (slash.isNotEmpty()) Column(Modifier.fillMaxWidth().heightIn(max = 220.dp).verticalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 2.dp)) {
             slash.forEach { cmd -> MenuItem(cmd.label, { state.text = ""; cmd.run() }, cmd.icon, cmd.description) }
         }
+        state.editing?.let { e -> EditStrip(e, onCancel = { state.editing = null; state.text = "" }, onDropAttachments = { state.editing = e.copy(attachments = emptyList()) }) }
         if (state.images.isNotEmpty() || state.files.isNotEmpty() || state.pending > 0) Row(Modifier.padding(horizontal = 10.dp, vertical = 2.dp).horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             val removeLabel = stringResource(R.string.remove_attachment)
@@ -458,6 +482,28 @@ fun Composer(
         stringResource(R.string.full_confirm_ok), stringResource(R.string.cancel),
         onConfirm = { confirmFull = false; onPreset(PermissionPreset.Full) }, onDismiss = { confirmFull = false },
     )
+}
+
+/** Above the editor while a sent message is edited (#2): what Send does now, cancel, and the original's attachments. */
+@Composable
+private fun EditStrip(e: EditTarget, onCancel: () -> Unit, onDropAttachments: () -> Unit) {
+    val c = Dsh.colors
+    Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        DIcon(R.drawable.dsw_edit_outline, size = 14.dp, tint = c.labelSecondary)
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(R.string.edit_banner), style = DshType.xs13m, color = c.labelPrimary, maxLines = 1)
+            Text(stringResource(R.string.edit_banner_hint), style = DshType.xxs12, color = c.labelTertiary, maxLines = 2)
+        }
+        IconBtn(R.drawable.dsw_close_outline, onCancel, size = 36.dp, iconSize = 12.dp, contentDescription = stringResource(R.string.edit_cancel))
+    }
+    if (e.attachments.isNotEmpty()) Row(Modifier.padding(start = 10.dp, top = 4.dp, bottom = 2.dp).height(32.dp).clip(Radius.md).background(c.selector).padding(start = 10.dp, end = 2.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        DIcon(R.drawable.dsw_paperclip_outline, size = 14.dp, tint = c.labelSecondary)
+        Spacer(Modifier.width(6.dp))
+        Text(stringResource(R.string.edit_kept, e.attachments.size), style = DshType.xxs12m, color = c.labelPrimary, maxLines = 1)
+        IconBtn(R.drawable.dsw_close_outline, onDropAttachments, size = 28.dp, iconSize = 10.dp, contentDescription = stringResource(R.string.remove_attachment))
+    }
 }
 
 private fun effortDesc(e: Effort) = when (e) {
@@ -661,8 +707,10 @@ suspend fun addBitmap(state: ComposerState, bmp: Bitmap) {
     if (img != null) state.images += img
 }
 
-/** Copies a picked document into the agent's home so dsh's file tools can read it. */
+/** Copies a picked document into the agent's home so dsh's file tools can read it (one already there is used as is). */
 private fun importFile(context: Context, uri: Uri): FileAttachment? = runCatching {
+    // Picked from the agent's own folder (the DSH root, #76): referenced in place, no copy to go stale.
+    io.github.jackwener.dsh.core.platform.Workspace.fileOfUri(context, uri)?.takeIf { it.isFile }?.let { return@runCatching FileAttachment(it.name, it.path, it.length()) }
     val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null }
         ?: "file_${System.currentTimeMillis()}"
     val dir = File(context.filesDir, "home/attachments").apply { mkdirs() }

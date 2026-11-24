@@ -104,6 +104,13 @@ const val AUTO_CONTINUE = "android-continue"
  */
 const val MODEL_SWITCH = "model-selection"
 
+/**
+ * [Block.Notice.kind] of dsh's working-directory notice (#76): the `user/message` with this `source.kind` it
+ * adds after a conversation's directory changed (the app's 工作目录 or the agent's `working_directory`); the
+ * notice's text is the new directory, from the `working-directory/change` record before it.
+ */
+const val WORKDIR_CHANGE = "working-directory"
+
 /** plugin-guard's ignorable record of why a turn ended (ENGINE-CONTRACT §2.7). */
 const val TURN_OUTCOME = "plugin:android-guard/turn-outcome"
 
@@ -168,7 +175,15 @@ sealed interface Block {
     data class Notice(override val key: String, val text: String, val kind: String? = null, val resumed: Boolean = false) : Block
 }
 
-data class UserMsg(val seq: Long, val time: Long, val text: String, val images: Int, val files: Int)
+/**
+ * A human message. [messageId]: dsh's message id (null for a prompt that never reached the engine), the
+ * anchor of 编辑 / 重试 / 分叉 (#2); [attachments]: its non-text content blocks as dsh stored them (images
+ * and files by their durable attachment reference), sent again with an edited or retried message.
+ */
+data class UserMsg(
+    val seq: Long, val time: Long, val text: String, val images: Int, val files: Int,
+    val messageId: String? = null, val attachments: List<JsonObject> = emptyList(),
+)
 
 /** [Steered]: the part of a running turn before a message the user steered into it; the turn goes on in the next [Turn]. */
 enum class TurnStatus { Running, Completed, Failed, Stopped, MaxTokens, Steered }
@@ -225,6 +240,8 @@ data class Conversation(
     /** Prompt size of the latest request (context pressure). */
     val contextTokens: Long = 0,
     val usage: Usage = Usage(),
+    /** The conversation's working directory when it changed from the starting one (home), else null (#76). */
+    val cwd: String? = null,
 ) {
     val isEmpty get() = turns.isEmpty()
     fun tool(callId: String): Block.Tool? = turns.asSequence().flatMap { it.blocks }.filterIsInstance<Block.Tool>().firstOrNull { it.callId == callId }
@@ -248,6 +265,7 @@ object Projector {
         var todos: List<TodoItem>? = null
         var context = 0L
         var total = Usage()
+        var cwd: String? = null
         fun open(): TurnB? = turns.lastOrNull()?.takeIf { it.end == null }
         fun close(t: TurnB, time: Long, status: TurnStatus) {
             t.end = time; t.status = status
@@ -281,6 +299,8 @@ object Projector {
                     if (d.o("source")?.s("kind") == AUTO_CONTINUE && !e.isReplacement()) { current(e.time, e.seq).blocks += Block.Notice("n${e.seq}", "", AUTO_CONTINUE); continue }
                     // The conversation's model changed (#53): a quiet line where the new model takes over.
                     if (d.o("source")?.s("kind") == MODEL_SWITCH && !e.isReplacement()) { current(e.time, e.seq).blocks += Block.Notice("n${e.seq}", d.o("source")?.s("summary").orEmpty(), MODEL_SWITCH); continue }
+                    // The working directory changed (#76): a quiet line naming the new one.
+                    if (d.o("source")?.s("kind") == WORKDIR_CHANGE && !e.isReplacement()) { cwd?.let { current(e.time, e.seq).blocks += Block.Notice("n${e.seq}", it, WORKDIR_CHANGE) }; continue }
                     if (d.o("source")?.s("kind") != "user" || e.isReplacement()) continue
                     val content = d["content"]
                     val prev = awaiting
@@ -294,7 +314,8 @@ object Projector {
                         } else if (prev != null && turns.lastOrNull() === prev) resumeInto = prev
                         continue
                     }
-                    val msg = UserMsg(e.seq, e.time, textOf(content), countOf(content, "image"), countOf(content, "file"))
+                    val msg = UserMsg(e.seq, e.time, textOf(content), countOf(content, "image"), countOf(content, "file"), d.s("id"),
+                        (content as? JsonArray)?.mapNotNull { (it as? JsonObject)?.takeIf { b -> b.s("type") != "text" } }.orEmpty())
                     val t = open()
                     // A turn's own prompt: nothing of the model's yet (a compaction or a notice may precede it).
                     if (t != null && t.user == null && t.blocks.all { it is Block.Compaction || it is Block.Notice }) t.user = msg
@@ -346,6 +367,7 @@ object Projector {
                     if (t.number != null && d.i("turn") != null && d.i("turn") != t.number) return@let
                     t.outcome = TurnOutcome(d.s("reason") ?: "done", TodoCounts.of(d.o("todos")), d.i("nudges") ?: 0, d.s("kind"))
                 }
+                "working-directory/change" -> cwd = d.s("cwd") ?: cwd
                 "compaction/start" -> current(e.time, e.seq).blocks += Block.Compaction("m${d.s("compactionId") ?: e.seq}", true, 0, 0, "", false)
                 "compaction/summary" -> {
                     val key = "m${d.s("compactionId")}"
@@ -396,7 +418,7 @@ object Projector {
             }
         }
         if (!running) open()?.let { t -> close(t, events.lastOrNull()?.time ?: t.start, TurnStatus.Stopped) }
-        return Conversation(turns.map { it.build() }, todos, context, total)
+        return Conversation(turns.map { it.build() }, todos, context, total, cwd)
     }
 
     // ---- trajectory projection (port of dsh ui-trajectory, phone subset) -----------------------

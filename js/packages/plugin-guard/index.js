@@ -25,6 +25,8 @@
 //     llm runtime resolves for each third-party model, so the app offers only levels the route accepts.
 //  8. Per-conversation model (`android/session/model`, #53; session-model.js): each conversation's
 //     model route and reasoning level, installed on its root Agent (dsh's Agent-scoped selection).
+//  9. Edit / retry / fork (`android/session/fork`, #2; session-fork.js): a new session seeded with a
+//     prefix of a conversation's log (dsh's boundary fork), written to dsh's session store.
 import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, posix } from 'node:path'
@@ -33,6 +35,7 @@ import { checkCommand, isReadOnlyCommand, refusalText } from './hardline.js'
 import { setupExperience } from './experience.js'
 import { setupContinuation } from './continuation.js'
 import { setupSessionModel } from './session-model.js'
+import { setupSessionFork } from './session-fork.js'
 import { setupObservations } from './observations.js'
 
 export { checkCommand, isReadOnlyCommand, refusalText } from './hardline.js'
@@ -247,7 +250,7 @@ Approvals and safety:
 - Before deleting, moving or overwriting files, state exactly which files and folders are affected (list them, or give the count and paths) and confirm the scope with the user unless they already named the exact items. Prefer the narrowest scope; never act on whole storage roots.
 - The app hard-blocks some shell commands, in bash, adb_shell and termux_run alike (wiping storage roots or system directories, formatting or writing block devices, reboot/shutdown, fork bombs, executing decoded payloads, uninstalling system packages, deleting system settings): such a call is refused before it runs and returns HARDLINE_BLOCKED. Never try to work around a block.
 
-${screenSection(descriptors)}${shell ? "Shell: the bash tool runs Android's /system/bin/sh (mksh) with toybox utilities, not GNU bash/coreutils; there is no root. " : ''}The user's shared storage is /sdcard (= /storage/emulated/0). Your working directory is the app's private home folder.
+${screenSection(descriptors)}${shell ? "Shell: the bash tool runs Android's /system/bin/sh (mksh) with toybox utilities, not GNU bash/coreutils; there is no root. " : ''}The user's shared storage is /sdcard (= /storage/emulated/0). Your home folder (the starting working directory) is the user's "DSH" folder: they open and edit it in the system Files app and in other apps' file pickers, so save files they should get there (not in temp folders).
 
 Long tasks (working through a list, many screens): keep calling tools until the task is done. A reply without a tool call ends the task — there is no automatic next round, so never say you will continue later or automatically. Track progress with todo_write (which items are done) so a resumed task does not repeat actions that already took effect; if you must stop, say why, what is done, what remains and how to continue.
 
@@ -391,6 +394,8 @@ export function apply(ctx, config = {}) {
   ctx.on('sdk-extensions/resolve', method => methods.get(method))
   // ── 8. per-conversation model (#53) ─────────────────────────────────────────
   setupSessionModel(ctx)
+  // ── 9. edit / retry / fork a conversation (#2) ──────────────────────────────
+  setupSessionFork(ctx)
 
   // ── 1. Hardline floor ──────────────────────────────────────────────────────
   const hardlineVerdict = exec => {

@@ -107,6 +107,10 @@ open class ConversationController(
         hostId?.let { id -> RemoteView(id, hosts.firstOrNull { it.id == id }, states[id] ?: RemoteState.Idle) }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    /** The shown conversation among its forks (#2): the line above its messages. */
+    val lineage: StateFlow<io.github.jackwener.dsh.core.session.Lineage> = sessionId.flatMapLatest { id -> store.lineage(id) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, io.github.jackwener.dsh.core.session.Lineage())
+
     val view = MutableStateFlow(SessionView.Chat)
     /** Trajectory record to scroll to and inspect (set by a tool row's 查看 pill). */
     val focusRecord = MutableStateFlow<String?>(null)
@@ -150,6 +154,14 @@ open class ConversationController(
     fun stop() = viewModelScope.launch { store.stop(sessionId.value) }
     /** Ends the link to this conversation's computer (its runs stop); the next message connects again. */
     fun disconnectRemote() = viewModelScope.launch { remote.value?.let { store.stop(sessionId.value); remotes.reset(it.hostId) } }
+    /**
+     * 编辑 / 重试 (#2): a new version of the conversation from before message [messageId], which sends [text]
+     * ([kept]: the original's attachments, [images]: new ones). It is shown at once; the source again if the fork fails.
+     */
+    fun resend(messageId: String, kind: io.github.jackwener.dsh.core.session.ForkKind, text: String, images: List<Pair<String, String>>,
+               kept: List<kotlinx.serialization.json.JsonObject>) = viewModelScope.launch { store.resend(sessionId.value, messageId, kind, text, images, kept, ::open) }
+    /** 从这里分叉 (#2): a new conversation up to the end of a turn (before [nextMessageId]; null: all of it). */
+    fun fork(nextMessageId: String?) = viewModelScope.launch { store.fork(sessionId.value, nextMessageId, ::open) }
     fun retry(e: TurnError) = viewModelScope.launch { store.retry(sessionId.value, e) }
     /** 继续 on a turn's end card (work remains). */
     fun continueTask() = viewModelScope.launch { store.continueTask(sessionId.value) }
@@ -182,6 +194,11 @@ open class ConversationController(
     fun markSeen() = store.setViewing(this, id)
 
     fun inspect(callId: String) { view.value = SessionView.Trajectory; focusRecord.value = "k$callId" }
+
+    /** The conversation's working directory (#76): chosen for its first message, else its own; null = home. */
+    val workingDirectory: StateFlow<String?> = combine(currentId, conversation, store.pendingWorkingDirectories) { id, c, p -> p[id] ?: c.cwd }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    fun setWorkingDirectory(path: String, onDone: (Boolean) -> Unit) = viewModelScope.launch { onDone(store.setWorkingDirectory(sessionId.value, path).isSuccess) }
 
     override fun onCleared() { store.setViewing(this, null) }
 }

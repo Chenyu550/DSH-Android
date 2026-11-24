@@ -111,9 +111,9 @@ for p in "$JS_DIR"/patches/*.patch; do
     fi
     die "patch $name targets $target, which this dsh $DSH_VERSION tree does not have (upgrade? rebase or drop the patch)"
   done < <(sed -n 's#^+++ b/\([^[:space:]]*\).*#\1#p' "$p")
-  patch -p1 -d "$NM" --forward --batch --no-backup-if-mismatch --dry-run --silent < "$PATCH_TMP/$name" >/dev/null \
+  patch -p1 -d "$NM" --forward --batch --fuzz=0 --no-backup-if-mismatch --dry-run --silent < "$PATCH_TMP/$name" >/dev/null \
     || die "patch $name does not apply cleanly to dsh $DSH_VERSION"
-  patch -p1 -d "$NM" --forward --batch --no-backup-if-mismatch --silent < "$PATCH_TMP/$name"
+  patch -p1 -d "$NM" --forward --batch --fuzz=0 --no-backup-if-mismatch --silent < "$PATCH_TMP/$name"
 done
 find "$NM" \( -name '*.rej' -o -name '*.orig' \) -print -quit | grep -q . && die "patch left .rej/.orig files"
 
@@ -195,6 +195,7 @@ grep -q 'patch 24' "$NM/@deepseek-ai/dsh-http-proxy/lib/index.js" && grep -q 'pa
 grep -q 'appendPluginRecord' "$NM/@deepseek-ai/dsh-session/lib/index.js" || die "dsh-session lacks appendPluginRecord (plugin-mode records its selection with it)"
 [[ -f "$NM/@dsh-android/plugin-mode/index.js" ]] || die "plugin-mode missing"
 grep -q 'executeSessionTitleLlm' "$NM/@deepseek-ai/dsh-session-title-llm/lib/index.js" || die "dsh-session-title-llm missing (plugin-guard session-title.js runs its title calls through it)"
+grep -q 'TRANSLATION_TEXT_LIMIT' "$NM/@deepseek-ai/dsh-experimental-translator/lib/index.js" || die "dsh-experimental-translator missing (plugin-guard translate.js translates reasoning through it)"
 [[ -f "$NM/@dsh-android/bundle-android/main.mjs" ]] || die "engine entry main.mjs missing"
 [[ -f "$NM/@dsh-android/plugin-extensions/pnpmfile.cjs" && -s "$NM/@dsh-android/plugin-extensions/installation-packages.json" ]] || die "plugin-extensions gate missing"
 grep -q 'js patch 19' "$NM/@deepseek-ai/dsh-tools/lib/index.js" && grep -q 'js patch 19' "$NM/@deepseek-ai/dsh-commands/lib/index.js" || die "tool/command owner patch (19) missing"

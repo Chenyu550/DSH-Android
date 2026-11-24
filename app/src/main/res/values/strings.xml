@@ -96,6 +96,15 @@
     <string name="session_model_gone">此会话原用的模型 %1$s 已不可用，下一条消息将改用默认模型 %2$s</string>
     <string name="err_session_model">此会话的模型 %1$s 不可用：%2$s</string>
     <string name="model_switched_notice">已切换模型：%1$s</string>
+    <string name="workdir_changed_notice">工作目录：%1$s</string>
+    <string name="workdir_cmd">工作目录</string>
+    <string name="workdir_cmd_desc">当前：%1$s · 选一个 DSH 里的文件夹给本会话用</string>
+    <string name="workdir_outside">工作目录只能是“DSH”里的文件夹，请在“DSH”下选择</string>
+    <string name="workdir_failed">没能切换工作目录，请重试</string>
+    <string name="workspace_root_summary">智能体的工作目录</string>
+    <string name="workspace_open">在“文件”中打开工作目录</string>
+    <string name="workspace_open_desc">智能体的文件都在这里（文件 App 和其他应用的文件选择器里叫“DSH”），可以直接查看、编辑、放入文件，不用复制</string>
+    <string name="workspace_no_files_app">没有找到系统“文件”App。可以在任意应用的文件选择器里找到“DSH”</string>
     <string name="preset_read_only">仅可查看</string>
     <string name="preset_ask">操作需确认</string>
     <string name="preset_full">完全权限</string>
@@ -121,6 +130,15 @@
     <string name="close">关闭</string>
     <string name="current_page">当前页面：%1$s</string>
     <string name="think">思考</string>
+    <string name="translation_translate">翻译</string>
+    <string name="translation_running">正在翻译…</string>
+    <string name="translation_label">译文（机器翻译）</string>
+    <string name="translation_hide">隐藏译文</string>
+    <string name="translation_show">显示译文</string>
+    <string name="translation_err_unreachable">连不上翻译服务（必应 / 谷歌翻译），请检查网络后重试</string>
+    <string name="translation_err_response">翻译服务返回了无法识别的结果，请稍后重试</string>
+    <string name="translation_err_engine">智能体引擎未就绪，暂时无法翻译</string>
+    <string name="translation_err_other">翻译失败：%1$s</string>
     <string name="inspect">查看</string>
     <string name="copied">已复制</string>
     <string name="screenshot">截图</string>
@@ -1014,4 +1032,25 @@
     <string name="adb_jit_title">连上 ADB 通道以继续</string>
     <string name="adb_jit_body">“%1$s”需要 shell 权限。DSH 的 ADB 通道已配对但现在连不上：打开「开发者选项 → 无线调试」，回来后会自动继续。</string>
     <string name="adb_jit_alt">不想装 Shizuku？也可以在 设置 → 手机权限 里用「直接 ADB 授权」。</string>
+
+    <!-- 编辑 / 重试 / 分叉 (#2) -->
+    <string name="msg_edit">编辑</string>
+    <string name="msg_retry">重试</string>
+    <string name="msg_fork">从这里分叉</string>
+    <string name="msg_retry_desc">在新版本里重新生成这条回复</string>
+    <string name="msg_edit_desc">修改后在新版本里重新发送</string>
+    <string name="msg_fork_desc">保留到这一轮为止，另开一个对话</string>
+    <string name="fork_busy">对话正在运行，先停止再编辑、重试或分叉</string>
+    <string name="fork_failed">没能创建新对话：%1$s</string>
+    <string name="fork_title">%1$s（分支）</string>
+    <string name="edit_banner">编辑消息</string>
+    <string name="edit_banner_hint">发送后在新版本里继续，原对话保留</string>
+    <string name="edit_cancel">取消编辑</string>
+    <string name="edit_kept">原有附件 %1$d 个</string>
+    <string name="lineage_edit">这是编辑后重新发送的版本</string>
+    <string name="lineage_retry">这是重新生成的版本</string>
+    <string name="lineage_fork">分叉自「%1$s」</string>
+    <string name="lineage_open_source">查看原对话</string>
+    <string name="lineage_newer">这个对话有更新的版本</string>
+    <string name="lineage_open_newer">查看新版本</string>
 </resources>

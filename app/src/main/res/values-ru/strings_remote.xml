@@ -94,5 +94,6 @@
     <string name="remote_err_dsh_exited">dsh не запустился на компьютере: %1$s</string>
     <string name="remote_err_initialize">dsh на компьютере отклонил модель: %1$s. Проверьте модель в настройках хоста или провайдеров, настроенных в dsh на компьютере.</string>
     <string name="remote_err_host_missing">Этот удалённый хост удалён.</string>
+    <string name="remote_fork_unsupported">dsh на компьютере не поддерживает ветвление</string>
     <string name="remote_err_other">Ошибка удалённого подключения: %1$s</string>
 </resources>

@@ -94,5 +94,6 @@
     <string name="remote_err_dsh_exited">dsh failed to start on the computer: %1$s</string>
     <string name="remote_err_initialize">The computer\'s dsh refused the model: %1$s. Check the model in the host settings, or the providers configured in dsh on the computer.</string>
     <string name="remote_err_host_missing">This remote host was deleted.</string>
+    <string name="remote_fork_unsupported">the computer\'s dsh cannot fork</string>
     <string name="remote_err_other">Remote connection error: %1$s</string>
 </resources>

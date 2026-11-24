@@ -119,7 +119,16 @@ private fun ConversationPane(vm: HomeViewModel, onMenu: () -> Unit, onSettings: 
     val settings by vm.settings.collectAsStateWithLifecycle()
     val view by vm.view.collectAsStateWithLifecycle()
     val prefill by vm.prefill.collectAsStateWithLifecycle()
+    val lineage by vm.lineage.collectAsStateWithLifecycle()
     val composer = rememberComposerState(live.sessionId)
+    // 编辑 / 重试 / 从这里分叉 (#2): each makes a new conversation (dsh's fork), shown right away.
+    val actions = remember(vm, composer) {
+        MessageActions(
+            onEdit = { u -> u.messageId?.let { composer.edit(EditTarget(it, u.attachments), u.text) } },
+            onRetry = { u -> u.messageId?.let { vm.resend(it, io.github.jackwener.dsh.core.session.ForkKind.Retry, u.text, emptyList(), u.attachments) } },
+            onFork = { turns, t -> vm.fork(io.github.jackwener.dsh.core.session.Forks.nextMessageId(turns, t)) },
+        )
+    }
     LaunchedEffect(prefill, live.sessionId) {
         if (live.sessionId == vm.id) prefill?.let { composer.text = it; vm.prefill.value = null }
     }
@@ -161,7 +170,9 @@ private fun ConversationPane(vm: HomeViewModel, onMenu: () -> Unit, onSettings: 
                     isEmpty -> EmptyHero(vm, composer, settings, live, conv, onAutomation, onSettings)
                     // One list state per session, so positions never leak across sessions.
                     else -> streams.SaveableStateProvider("chat/$sid") {
-                        ChatStream(conv, live, settings.workDetails, rememberLazyListState(), onInspect = vm::inspect, onRetry = vm::retry, onContinue = { vm.continueTask() }, onOpenSettings = { onSettings(it) }, modifier = Modifier.fillMaxSize())
+                        ChatStream(conv, live, settings.workDetails, rememberLazyListState(), onInspect = vm::inspect, onRetry = vm::retry, onContinue = { vm.continueTask() }, onOpenSettings = { onSettings(it) }, modifier = Modifier.fillMaxSize(),
+                            // A computer's stock dsh has no fork (android/session/fork, #51): no 编辑 / 重试 / 分叉 there.
+                            actions = actions.takeIf { live.hostId == null }, lineage = lineage, onOpenSession = vm::open)
                     }
                 }
             }
@@ -221,11 +232,23 @@ fun ComposerSlot(vm: ConversationController, composer: ComposerState, settings: 
     val modelChangePending by vm.modelChangePending.collectAsStateWithLifecycle()
     val model by vm.model.collectAsStateWithLifecycle()
     val remote by vm.remote.collectAsStateWithLifecycle()
+    // 工作目录 (#76): a folder of the agent's workspace, picked in the system folder picker (the DSH root).
+    val workingDirectory by vm.workingDirectory.collectAsStateWithLifecycle()
+    val home = remember { io.github.jackwener.dsh.core.platform.Workspace.home(context) }
+    val pickFolder = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val dir = io.github.jackwener.dsh.core.platform.Workspace.fileOfUri(context, uri)?.takeIf { it.isDirectory }
+        if (dir == null) android.widget.Toast.makeText(context, R.string.workdir_outside, android.widget.Toast.LENGTH_LONG).show()
+        else vm.setWorkingDirectory(dir.path) { ok -> if (!ok) android.widget.Toast.makeText(context, R.string.workdir_failed, android.widget.Toast.LENGTH_LONG).show() }
+    }
     val send = {
         val text = prepare(composer.outgoingText(context))
         val images = composer.images.map { it.mime to it.base64 }
+        val editing = composer.editing
         composer.clear()
-        vm.send(text, images, now = settings.busySend == io.github.jackwener.dsh.core.data.BusySend.Steer)
+        // 编辑 (#2): the edited message goes to a new version of the conversation.
+        if (editing != null) vm.resend(editing.messageId, io.github.jackwener.dsh.core.session.ForkKind.Edit, text, images, editing.attachments)
+        else vm.send(text, images, now = settings.busySend == io.github.jackwener.dsh.core.data.BusySend.Steer)
     }
     val voice = io.github.jackwener.dsh.feature.voice.rememberVoiceInput(composer) {
         // Attachments still loading: leave the spoken text in the draft for a manual send.
@@ -264,6 +287,14 @@ fun ComposerSlot(vm: ConversationController, composer: ComposerState, settings: 
                 onNewSession = if (conv.isEmpty) null else ({ vm.newSession() }),
                 onTrajectory = if (conv.isEmpty) null else ({ vm.view.value = SessionView.Trajectory }),
                 onAutomation = onAutomation,
+                // The folder picker browses this phone; a remote conversation starts in its host's directory (#51).
+                onWorkingDirectory = if (remote != null) null else ({
+                    val ws = io.github.jackwener.dsh.core.platform.Workspace
+                    val start = ws.docIdOf(home, java.io.File(workingDirectory ?: home.path))?.let { android.provider.DocumentsContract.buildDocumentUri(ws.authority(context), it) }
+                    runCatching { pickFolder.launch(start ?: ws.rootDocumentUri(context)) }
+                        .onFailure { android.widget.Toast.makeText(context, R.string.workspace_no_files_app, android.widget.Toast.LENGTH_LONG).show() }
+                }),
+                workingDirectory = workingDirectory?.takeIf { remote == null }?.let { io.github.jackwener.dsh.core.platform.Workspace.displayPath(home.path, it) },
             ),
             showChips = showChips,
             canSendEmpty = canSendEmpty,

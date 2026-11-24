@@ -17,27 +17,28 @@ named the endpoint (`ECONNREFUSED ollama.com:443`), not the dead proxy. Now:
 
 --- a/@deepseek-ai/dsh-http-proxy/lib/index.js
 +++ b/@deepseek-ai/dsh-http-proxy/lib/index.js
-@@ -394,8 +394,8 @@
+@@ -403,9 +403,9 @@
  * @returns the dispatcher to install, owning every per-origin agent its factory created.
  */
- async function createPolicyDispatcher(policy) {
+ async function createPolicyDispatcher(policy, options = {}) {
 -	const { Agent, Pool, ProxyAgent } = await import("undici");
--	return new Agent({ factory(origin, options) {
 +	const { Agent, Dispatcher, Pool, ProxyAgent } = await import("undici");
-+	const routed = new Agent({ factory(origin, options) {
- 		const passed = options;
- 		const proxy = proxyForUrl(policy, new URL(origin.toString()));
- 		if (proxy !== void 0) return new ProxyAgent({
-@@ -404,6 +404,68 @@
- 		});
- 		return new Pool(origin, passed);
- 	} });
+ 	const h2 = h2Options(options);
+-	return new Agent({
++	const routed = new Agent({
+ 		...h2,
+ 		factory(origin, passedOptions) {
+ 			const passed = passedOptions;
+@@ -421,6 +421,68 @@
+ 			});
+ 		}
+ 	});
 +	// DSH-Android (patch 24): a proxy nothing listens on is skipped, as Android's own HTTP stack does
 +	// (it tries the system proxy, then a direct connection). A capture or VPN app's local proxy left
 +	// configured after the app stopped otherwise fails every request with ECONNREFUSED, while the
 +	// app's own requests (the model test) still work.
 +	const { connect } = await import("node:net");
-+	const direct = new Agent();
++	const direct = new Agent(h2);
 +	const health = /* @__PURE__ */ new Map();
 +	const probe = (proxy) => new Promise((resolve) => {
 +		const url = new URL(proxy);

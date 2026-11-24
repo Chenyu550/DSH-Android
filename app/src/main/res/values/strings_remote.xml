@@ -94,5 +94,6 @@
     <string name="remote_err_dsh_exited">电脑上的 dsh 启动失败：%1$s</string>
     <string name="remote_err_initialize">电脑上的 dsh 拒绝了模型设置：%1$s。请检查主机设置里的模型，或电脑上 dsh 的模型服务配置。</string>
     <string name="remote_err_host_missing">这台远程主机已被删除。</string>
+    <string name="remote_fork_unsupported">电脑上的 dsh 不支持分叉</string>
     <string name="remote_err_other">远程连接出错：%1$s</string>
 </resources>
