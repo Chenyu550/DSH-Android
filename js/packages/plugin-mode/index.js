@@ -34,13 +34,14 @@ const SHELL = new Set(['bash', 'pwsh'])
 const FILES_READ = new Set(['read', 'read_image', 'glob', 'grep'])
 const FILES_WRITE = new Set(['write', 'edit'])
 const WEB = new Set(['web_search', 'web_fetch'])
-const SUBAGENT = new Set(['subagent', 'subagent_fork', 'list_subagent_models', 'send_message', 'interrupt_agent', 'list_agents'])
+const SUBAGENT = new Set(['subagent', 'subagent_fork', 'list_subagent_models', 'send_message', 'interrupt_agent', 'list_agents', 'wait_agent'])
 export const CATEGORIES = Object.freeze({
   shell: n => SHELL.has(n) || n.startsWith('terminal_') || n.startsWith('job_'),
   files_read: n => FILES_READ.has(n),
   files_write: n => FILES_WRITE.has(n),
   web: n => WEB.has(n),
-  subagent: n => SUBAGENT.has(n),
+  // team_task_*: dsh 0.2.2's agent teams (a shared task list for a subagent tree).
+  subagent: n => SUBAGENT.has(n) || n.startsWith('team_task_'),
 })
 /** Third-party plugin and MCP tools; membership is dynamic (see categoryOf). */
 export const EXTENSIONS = 'extensions'

@@ -1,18 +1,18 @@
 --- a/@deepseek-ai/dsh-sdk-jsonrpc-server/lib/index.js
 +++ b/@deepseek-ai/dsh-sdk-jsonrpc-server/lib/index.js
-@@ -91,6 +91,11 @@
- 			if (!this.userQuestionsEnabled || agent === void 0 || !this.ownsAgent(agent)) return next();
- 			return this.askUserQuestion(request, String(agent.session.id));
+@@ -388,6 +388,11 @@
  		}));
+ 		const serverOptions = this.options;
+ 		this.userQuestions = new SdkUserQuestionBridge(ctx, transport, (agent) => this.sessions.get(agent.session.id)?.handle.agent === agent);
 +		// DSH-Android: notifications contributed by profile plugins (see `sdkExtensions` below).
 +		this.disposers.push(ctx.on("sdk-extensions/notify", (method, params) => {
 +			if (typeof method !== "string" || method.length === 0 || this.shuttingDown) return;
 +			try { this.transport.notify(method, params ?? {}); } catch {}
 +		}));
- 		const serverOptions = this.options;
- 		this.disposers.push(ctx.on("session/event", (session, event) => {
- 			const record = this.sessions.get(session.id);
-@@ -395,7 +400,16 @@
+ 		this.disposers.push(ctx.on("schedule/resolve-agent", async (sessionId) => {
+ 			await this.initialization.promise;
+ 			if (this.shuttingDown) throw new Error("SDK server is shutting down");
+@@ -742,7 +747,16 @@
  					path: params.path
  				});
  			case "shutdown": return this.shutdown();

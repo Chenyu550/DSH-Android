@@ -2,13 +2,15 @@
 // `android/session/model { sessionId, provider, model, reasoningEffort? }` before each `session/prompt`
 // (patch 10 SDK extension, like `android/session/permission`) and again when the user switches the
 // model of a running conversation. The route is validated by dsh's llm runtime (`resolveCallConfig`:
-// a registered provider, a level the model accepts) and installed on the conversation's root Agent
-// with dsh's own Agent-scoped selection (`installModelSelection`, the mechanism behind the Web host's
-// `session/selectModel`): it routes the Agent's next model request (the next step, also inside a
-// running turn), names the model in the system prompt, and tells the model about a provider/model
-// switch. Subagents inherit the route from their parent's latest request (dsh-subagent).
+// a registered provider, a level the model accepts) and recorded on the conversation's root Agent
+// with dsh's own model selection (`agent.model.select`, a durable `model/selection` log entry: what
+// the Web host's `session/selectModel` does). It routes the Agent's next model request (the next
+// step, also inside a running turn) and names the model in the system prompt; dsh's
+// `installModelSelection` (installed once per Agent) tells the model about a provider/model switch.
+// Subagents inherit the route from their parent's latest request (dsh-subagent).
 // `{ sessionId, model: null }` forgets it (the Agent goes back to its creation route, `initialize`'s).
-// Sessions the app never describes (plugins' background sessions) keep the route they were created with.
+// A resumed conversation starts on `initialize`'s route again (the SDK server selects it) until the
+// app sends its route. Sessions the app never describes (plugins' background sessions) keep their own.
 
 export const METHOD = 'android/session/model'
 
@@ -50,12 +52,17 @@ const isRoot = agent => agent?.session?.header?.parentSession === undefined
 export function setupSessionModel(ctx, { install } = {}) {
   /** root session id → selection the app sent. */
   const selections = new Map()
-  /** live root Agent → its installed mutable selection (`{ current, assembled }`). */
-  const installed = new WeakMap()
+  /** live root Agents the switch notice is installed on. */
+  const noticed = new WeakSet()
   let installer = install
   const loadInstaller = async () => {
     installer ??= (await import('@deepseek-ai/dsh-agent')).installModelSelection
     return installer
+  }
+  /** The route [agent] was created with (`initialize`'s for the app's conversations). */
+  const creationRoute = agent => {
+    const { provider, model, reasoningEffort } = agent.model?.options ?? {}
+    return provider && model ? { provider, model, ...reasoningEffort === undefined ? {} : { reasoningEffort } } : undefined
   }
 
   const rootAgent = sessionId => {
@@ -63,12 +70,14 @@ export function setupSessionModel(ctx, { install } = {}) {
   }
 
   const applyTo = async (agent, selection) => {
-    const ref = installed.get(agent)
-    if (ref !== undefined) { ref.current = selection; return }
-    if (selection === undefined) return
-    const next = { current: selection, assembled: undefined }
-    ;(await loadInstaller())(agent.ctx, next)
-    installed.set(agent, next)
+    if (selection === undefined && !noticed.has(agent)) return
+    const route = selection ?? creationRoute(agent)
+    if (route === undefined || typeof agent.model?.select !== 'function') return
+    if (!noticed.has(agent)) {
+      noticed.add(agent)
+      ;(await loadInstaller())(agent.ctx)
+    }
+    agent.model.select(route)
   }
 
   const methods = new Map([

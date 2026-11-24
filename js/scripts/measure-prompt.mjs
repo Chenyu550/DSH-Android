@@ -178,7 +178,7 @@ const CATEGORY = n => {
   if (['bash', 'pwsh'].includes(n) || n.startsWith('terminal_') || n.startsWith('job_')) return 'dsh:shell'
   if (['read', 'read_image', 'glob', 'grep', 'write', 'edit'].includes(n)) return 'dsh:files'
   if (['web_search', 'web_fetch'].includes(n)) return 'dsh:web'
-  if (['subagent', 'subagent_fork', 'list_subagent_models', 'send_message', 'interrupt_agent', 'list_agents'].includes(n)) return 'dsh:subagent'
+  if (['subagent', 'subagent_fork', 'list_subagent_models', 'send_message', 'interrupt_agent', 'list_agents', 'wait_agent'].includes(n) || n.startsWith('team_task_')) return 'dsh:subagent'
   return `dsh:${n}`
 }
 const toolJson = t => JSON.stringify({ name: t.name, description: t.description, input_schema: t.input_schema })

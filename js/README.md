@@ -1,6 +1,6 @@
 # js/ — the engine package
 
-DeepSeek Harness (dsh) **0.2.1-rc.5**, installed unmodified from npm and customized only by a dsh bundle (profile
+DeepSeek Harness (dsh) **0.2.2-rc.5**, installed unmodified from npm and customized only by a dsh bundle (profile
 `android`), three plugins, one vendored third-party LLM adapter and a few patches applied at build time. The app side of the interface is
 [`../docs/ENGINE-CONTRACT.md`](../docs/ENGINE-CONTRACT.md).
 
@@ -40,6 +40,7 @@ DeepSeek Harness (dsh) **0.2.1-rc.5**, installed unmodified from npm and customi
 | `test/session-open-engine.test.mjs` | #57 on a built stage: a session an earlier engine process opened is refused by `session/prompt` with `session "<id>" already exists` (the exact text the app's `SessionOpen` matches); `session/resume` + prompt continues it with its history; `DSH_STAGE_NM` as below |
 | `test/continuation.test.mjs` | plugin-guard `continuation.js` (#37): when a text-only stop is continued (open todos, "will continue" claims), questions, no-progress and cap stops, the outcome record: `node --test js/test/continuation.test.mjs` |
 | `test/long-task.test.mjs` | long tasks end to end on a built stage (real engine, scripted fake OpenAI-compatible model, fake bridge): "next round" text with open todos continues in the same turn (no idle gap), `pending_work` / `needs_user` / `continue_limit` / `budget` outcomes, no goal tools; same `DSH_STAGE_NM` (`DSH_NATIVE_DIR` defaults to its `../../host-native`), ~1 min |
+| `test/sdk-requests.test.mjs` | SDK server → app requests on a built stage (dsh's own `approval/request` / `user-question/ask`; real engine, scripted fake model, fake bridge): a conversation's approval names its session, allowed runs and rejected does not; a subagent never reaches the app (dsh pins its approval policy to `never` and refuses its questions); a question's answer reaches the model; plugin-guard on dsh's native tool executor (read-only shell runs, a write outside HOME asks, the hardline blocks without asking); same `DSH_STAGE_NM` |
 | `test/steer.test.mjs` | steering end to end on a built stage (patch 21; real engine, scripted fake model, fake bridge with a tool that blocks until released): a `mode: "steer"` prompt sent during a tool call reaches the very next model request of the same turn (one turn, no idle gap); without `mode` it still waits for a turn of its own; a steer sent during a model request that then fails runs as a turn of its own; steering an idle session starts a turn; an unknown mode is refused; after an engine kill a steer the dead process never ran is not claimed by the next prompt; same `DSH_STAGE_NM` |
 
 Our packages are plain ESM with no dependencies outside `node:` built-ins; there is no compile step (the vendored adapter is shipped as built upstream).
@@ -63,17 +64,17 @@ Requires node/npm, `patch`, `python3` and access to the npm registry.
 
 Steps:
 
-1. `npm ci --omit=dev --ignore-scripts` in a copy of `engine/` (flat hoisted layout; includes pnpm 11, pinned). `overrides: {zod: 4.4.3}`: dsh
+1. `npm ci --omit=dev --ignore-scripts` in a copy of `engine/` (flat hoisted layout; includes pnpm 11, pinned). `overrides: {zod: 4.6.6}`: dsh
    pins zod exactly in ~60 packages; without the override npm nests ~50 copies (~250 MiB). Install scripts are not
    needed (node-pty/koffi only pick prebuilds, which are pruned).
 2. Copy the four `@dsh-android/*` packages and the vendored `@snnh/dsh-llm-service-lite` into `node_modules/` (copies,
    not links) and add them to the root `package.json`. The adapter's dependencies (`eventsource-parser`, cosmokit,
    schemastery, dsh-util-values) must already be installed from the lockfile at versions satisfying its ranges.
 3. Add `@img/sharp-freebsd-wasm32`, `@img/sharp-wasm32`, `@emnapi/runtime`, `tslib` at their lockfile versions (patch 09).
-4. Save the host's native bindings to `$WORK_DIR/host-native/libdsh_*.so` (tests only, never zipped).
+4. Save the host's native bindings (Linux arm64 or x64) to `$WORK_DIR/host-native/libdsh_*.so` (tests only, never zipped).
 5. Apply `patches/*.patch`; fail on rejects or fuzz.
 6. Prune: packages reachable only through `llm-pi-ai` (openai, anthropic, google, aws SDKs; the row is disabled),
-   `libreoffice-kit-wasm`, `sherpa-onnx*`, the web client UI and inspector, native `@img/sharp-*`, other-platform native
+   `libreoffice-kit-wasm`, `sherpa-onnx*`, the web client UI (`dsh-client-ui-*`, `dsh-experimental-client-ui-*`) and inspector, native `@img/sharp-*`, other-platform native
    packages, node-pty prebuilds/sources, every `*.node/.dll/.dylib/.exe`, `.bin`, `*.map`, `*.d.ts`, READMEs, and
    package-root `docs|test|tests|examples|benchmark`; in pnpm: node-gyp, the reflink binaries, Windows helpers.
    Then `plugin-extensions/installation-packages.json` lists the shipped `@deepseek-ai/*` packages (the gate peers them).
@@ -95,17 +96,24 @@ node_modules/…                                  ← flat npm tree
 Patch 07 adds `android` to dsh's shipped profile templates, so `--profile android` creates
 `$DSH_HOME/profiles/android/` on first launch; the app has no init step. The profile stacks three bundles:
 
-1. `@deepseek-ai/dsh-base`: core rows (tools, persistence, approval, DeepSeek web search, account provider).
-2. `@deepseek-ai/dsh-sdk-app`: stdio JSON-RPC SDK server.
+1. `@deepseek-ai/dsh-base`: core rows (tools, persistence, approval, DeepSeek web search, account provider, subagents
+   and agent teams).
+2. `@deepseek-ai/dsh-sdk-app`: stdio JSON-RPC SDK server; since 0.2.2 also time context, `ask_user_question`, Office,
+   schedules and desktop-host rows (browser connection, uploads, workspaces, file references, `present`).
 3. `@dsh-android/bundle-android` ([`cordis.patch.yml`](packages/bundle-android/cordis.patch.yml)):
    - persona "DSH, an AI agent running on the user's own Android phone";
    - `sandbox-policy` → `danger-full-access` with `workspaceRoot = $HOME`, `approval` → `ask`. Android has no
      bwrap/landlock/seatbelt; safety comes from approvals and the hardline floor;
    - `android-extensions` mounts dsh's `plugin-manager` and `plugin-market` on first use (the dsh-base row stays off:
-     ~110 ms of boot); the DeepSeek routes wait 1 ms, not 5 s, for `/models` on first connect (rc.5's listing);
-   - disabled rows: `plugin-manager`, `session-telemetry-otel`, `otel`, `llm-pi-ai`, `ptc-runtime`, `workflow-ptc`,
-     `tool-workflow`, `skill-office`, `workspace-dependencies`, `tmux-context` (otel + pi-ai halve boot-time modules);
-   - inserted rows: `dsh-time-context`, `dsh-tool-ask-user`, `android-extensions`, `android-device`, `android-guard`, `android-account`.
+     ~110 ms of boot); the DeepSeek routes wait 1 ms, not 5 s, for `/models` on first connect;
+   - web search through DeepSeek Messages search on every route (`web.searchProvider: deepseek-official`; dsh 0.2.2
+     would use the per-search-billed DeepSeek Search API for third-party routes);
+   - disabled rows: `plugin-manager`, `tool-plugin-manager`, `session-telemetry-otel`, `otel`, `llm-pi-ai`, `ptc-runtime`,
+     `workflow-ptc`, `tool-workflow`, `skill-office`, `office-kit`, `tool-office`, `workspace-dependencies`, goals,
+     `schedule`, `tool-schedule` (the app's rules are the automations), `connection`, `file-upload`, `workspace`,
+     `file-reference-local`, `present`, `deliverable-file-references` (desktop-host rows; `connection` would also serve
+     its browser `/api` on android-account's loopback server), `tmux-context` (otel + pi-ai halve boot-time modules);
+   - inserted rows: `android-extensions`, `android-device`, `android-guard`, `android-mode`, `android-account`, `llm-service-lite`.
    - Model default stays dsh-base's `deepseek-official` / `deepseek-flash`.
 
 Only the bundle list is persisted in `DSH_HOME`, so later engine versions can change `bundle-android` freely. The
@@ -199,9 +207,8 @@ silently skipping. All patches are inert on desktop Linux unless the correspondi
 | `02-require-builtin-expose-internals` | `node-addon-require-builtin` | dsh uses this addon only to reach Node *internal* modules (`internal/modules/esm/loader`, …), which `process.getBuiltinModule` does not serve. The engine runs with `--expose-internals` (argv only; Node refuses it in `NODE_OPTIONS`) and the patched entry uses plain `require()`, so no native binding ships. Without the flag the upstream path runs unchanged (on android it throws a clear error). |
 | `04-shell-system-bin-sh` | `dsh-bash-local` | `bash -c` → `/system/bin/sh -c` on android (override: `DSH_BASH_SHELL`). |
 | `05-hardlink-copy-fallback` | `dsh-attachment-local`, `dsh-session-persistence-jsonl` | `link(2)` is denied in app storage; fall back to exclusive copy to a sibling temp + rename, keeping `EEXIST` semantics. |
-| `06-ripgrep-from-path` | `dsh-tool-fs-search` | `@vscode/ripgrep` has no android build: use `DSH_RG_PATH`, else `rg` from `PATH` (`files/bin/rg → librg.so`). |
-| `07-android-profile-template` | `dsh-app-boot` | adds `android` to the shipped profile templates. |
-| `08-sdk-approval-user-questions` | `dsh-sdk-jsonrpc-server` | the 0.2.1 release line's SDK server (rc.2 … rc.5) lacks `approval/request` / `user-question/ask`; backport from the upstream development line. **Drop once a bundled dsh ships them** (it would double-register; check `grep approval/request` in the unpatched server on every bump). Without it every approval fails closed. |
+| `06-ripgrep-from-path` | `dsh-util-ripgrep` | `@vscode/ripgrep` has no android build: use `DSH_RG_PATH`, else `rg` from `PATH` (`files/bin/rg → librg.so`). |
+| `07-android-profile-template` | `dsh-official-bundles` | adds `android` to the shipped profile templates. |
 | `09-sharp-wasm-android` | `sharp` | no bionic libvips: on `android-*` sharp loads its WebAssembly build. Attachments (tool images, prompt images) need it. |
 | `10-sdk-extension-methods` | `dsh-sdk-jsonrpc-server` | unknown SDK methods resolve through an optional `sdkExtensions` service or a `sdk-extensions/resolve` listener (works before `initialize`); plugins emit SDK notifications with `ctx.emit('sdk-extensions/notify', method, params)`. Used by plugin-account, plugin-guard and plugin-mode. Re-check on every dsh bump. |
 | `11-sdk-prompt-time-zone` | `dsh-sdk-jsonrpc-server` | SDK prompts carried no time zone, so `dsh-time-context` reported "time zone unavailable". Prompts now carry `clientTimeZone` from `session/prompt`, else the process `TZ`. |

@@ -90,7 +90,7 @@ object ToolPresentation {
         "skill" -> ToolInfo(R.drawable.dsw_skill_outline, R.string.tool_skill, Activity.Other, BodyKind.InOut)
         // Deferred tool loading (engine plugin-mode, issue #36): activates tool definitions on demand.
         "load_tools" -> ToolInfo(R.drawable.dsw_apps_add_outline, R.string.tool_load_tools, Activity.Other, BodyKind.InOut)
-        else -> if ("agent" in name || "subagent" in name || name == "send_message")
+        else -> if ("agent" in name || name == "send_message" || name.startsWith("team_task_"))
             ToolInfo(R.drawable.dsw_users_outline, R.string.tool_subagent, Activity.Subagent, BodyKind.InOut)
         else ToolInfo(R.drawable.dsw_sparkle, R.string.tool_generic, Activity.Other, BodyKind.InOut)
     }

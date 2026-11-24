@@ -1,6 +1,6 @@
 --- a/@deepseek-ai/dsh-sdk-jsonrpc-server/lib/index.js
 +++ b/@deepseek-ai/dsh-sdk-jsonrpc-server/lib/index.js
-@@ -120,6 +120,16 @@
+@@ -435,6 +435,16 @@
  				status
  			});
  		}));
@@ -16,8 +16,8 @@
 +		}));
  		this.disposers.push(ctx.on("session/created", (session) => {
  			const parentSession = session.header.parentSession;
- 			if (parentSession === void 0) return;
-@@ -199,8 +209,14 @@
+ 			if (session.header.origin !== "subagent" || parentSession === void 0) return;
+@@ -516,8 +526,14 @@
  			content,
  			source: clientTimeZone === void 0 ? { kind: "user" } : { kind: "user", rpcId: randomUUID(), clientTimeZone }
  		});
@@ -33,10 +33,10 @@
 +		return { messageId: message.id, delivery: steer ? "step" : "turn" };
  	}
  	/**
- 	* Restore a persisted session and repair its interrupted final turn without sending input.
-@@ -214,7 +230,12 @@
- 		if (this.shuttingDown) throw new Error("SDK server is shutting down");
- 		const sessionId = params.sessionId;
+ 	* Dispatch text as a Desktop-style input; native commands own Session state changes.
+@@ -595,7 +611,12 @@
+ 			return {};
+ 		}
  		if (this.sessions.has(sessionId) || this.sessionCreations.has(sessionId)) throw new Error(`SDK session is already open or opening: ${sessionId}`);
 -		await this.openSession(sessionId, true);
 +		const rec = await this.openSession(sessionId, true);
@@ -48,7 +48,7 @@
  		return {};
  	}
  	/**
-@@ -460,6 +481,12 @@
+@@ -815,6 +836,12 @@
  	}
  };
  //#endregion

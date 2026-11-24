@@ -1,6 +1,6 @@
 --- a/@deepseek-ai/dsh-plugin-market/lib/index.js
 +++ b/@deepseek-ai/dsh-plugin-market/lib/index.js
-@@ -555,7 +555,9 @@
+@@ -1426,7 +1426,9 @@
  			}, { cause });
  			let response;
  			try {

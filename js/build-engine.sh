@@ -82,9 +82,10 @@ node "$JS_DIR/scripts/fetch-locked.mjs" "$STAGE/package-lock.json" "$NM" \
 
 # ── 4. host-native test bindings (only used by test/host-e2e.mjs, never zipped) ─
 rm -rf "${HOST_NATIVE:?}"
-if [[ "$(uname -s)-$(uname -m)" == "Linux-aarch64" ]]; then
+case "$(uname -s)-$(uname -m)" in Linux-aarch64) host_arch=arm64 ;; Linux-x86_64) host_arch=x64 ;; *) host_arch= ;; esac
+if [[ -n "$host_arch" ]]; then
   mkdir -p "$HOST_NATIVE"
-  cp "$NM/@deepseek-ai/node-addon-system-linux-arm64/bin/glibc/system.node" "$HOST_NATIVE/libdsh_flock.so"
+  cp "$NM/@deepseek-ai/node-addon-system-linux-$host_arch/bin/glibc/system.node" "$HOST_NATIVE/libdsh_flock.so"
   log "host test bindings -> $HOST_NATIVE"
 fi
 
@@ -128,7 +129,7 @@ mapfile -t pi_only < <(node "$JS_DIR/scripts/unreachable.mjs" "$STAGE/package-lo
 for key in "${pi_only[@]}"; do [[ -e "$STAGE/$key" ]] && rm -rf "${STAGE:?}/$key"; done
 log "pruned ${#pi_only[@]} packages only reachable through @earendil-works/pi-ai"
 # Browser client UI and the experimental inspector (Web/desktop surfaces only; boot verified without them).
-for d in "$NM"/@deepseek-ai/dsh-client-ui-*; do rm -rf "$d"; done
+for d in "$NM"/@deepseek-ai/dsh-client-ui-* "$NM"/@deepseek-ai/dsh-experimental-client-ui-*; do rm -rf "$d"; done
 rm_pkg @deepseek-ai/dsh-web-frontend @deepseek-ai/dsh-experimental-inspector
 for d in "$NM"/sherpa-onnx*; do [[ -e "$d" ]] && rm -rf "$d"; done
 # Host/other-platform native packages (the app ships android builds in nativeLibraryDir).
@@ -174,7 +175,7 @@ links=$(find "$STAGE" -type l | wc -l)
 [[ "$links" -eq 0 ]] || { find "$STAGE" -type l | head >&2; die "$links symlinks remain in the engine tree"; }
 [[ -f "$NM/@deepseek-ai/dsh/lib/bin.js" ]] || die "missing dsh entry point"
 grep -q 'libdsh_flock.so' "$NM/@deepseek-ai/node-addon-system/lib/flock.js" || die "flock patch missing"
-grep -q '"@dsh-android/bundle-android"' "$NM/@deepseek-ai/dsh-app-boot/lib/index.js" || die "profile template patch missing"
+grep -q '"@dsh-android/bundle-android"' "$NM/@deepseek-ai/dsh-official-bundles/lib/index.js" || die "profile template patch missing"
 grep -q 'sdkExtensions' "$NM/@deepseek-ai/dsh-sdk-jsonrpc-server/lib/index.js" || die "SDK extension patch missing"
 grep -q 'expose-internals' "$NM/node-addon-require-builtin/lib/index.js" || die "require-builtin patch missing"
 grep -q 'promptTimeZone' "$NM/@deepseek-ai/dsh-sdk-jsonrpc-server/lib/index.js" || die "SDK prompt time-zone patch missing"
