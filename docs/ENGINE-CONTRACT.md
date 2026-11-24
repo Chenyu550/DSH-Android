@@ -405,7 +405,8 @@ interface ToolResult {
 
 Descriptions are static: they never carry live state (Shizuku up/down, permissions), because every description
 change re-lists the tools and re-bills the cached prompt. Availability is reported in the call's result (`path=…`,
-"via Shizuku") or error (`shizuku_unavailable`, `permission_missing`). `capability/changed` is only sent when the
+"via Shizuku" / "via ADB": shell-user commands run through Shizuku when ready, else the app's own wireless-debugging
+ADB channel, #71) or error (`shizuku_unavailable` = neither shell channel is usable, `permission_missing`). `capability/changed` is only sent when the
 user changes which tool groups are enabled.
 
 The app is authoritative for: which groups are enabled, runtime permissions, lock-state waiting (a `needsUnlock` call while locked is held by the app, which posts a "continue after unlock" notification; the request resolves after unlock, or with `waiting_for_user` when the budget runs out), and unattended whitelists.

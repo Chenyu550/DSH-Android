@@ -62,6 +62,7 @@ class SettingsViewModel @Inject constructor(
     /** Engine restarts go through the store, so the runs they kill end as stopped (not spinning forever). */
     private val sessions: io.github.jackwener.dsh.core.session.SessionStore,
     val shizuku: ShizukuShell,
+    private val localAdb: io.github.jackwener.dsh.core.platform.adb.LocalAdb,
     private val shizukuInstaller: io.github.jackwener.dsh.core.platform.ShizukuInstaller,
     val account: io.github.jackwener.dsh.core.account.AccountRepository,
     usage: UsageDao,
@@ -223,7 +224,7 @@ class SettingsViewModel @Inject constructor(
                 androidRelease = android.os.Build.VERSION.RELEASE,
                 sdk = android.os.Build.VERSION.SDK_INT,
                 abis = android.os.Build.SUPPORTED_ABIS.toList(),
-                shizuku = shizuku.access.describe(shell),
+                shizuku = shizuku.access.describe(shell) + "\nlocal ADB (wireless debugging): " + localAdb.describe(),
                 accessibility = granted("accessibility"),
                 overlay = granted("overlay"),
                 batteryExempt = granted("battery"),
@@ -274,6 +275,8 @@ class SettingsViewModel @Inject constructor(
         val shell = shizuku.access.refresh()
         checks += DoctorCheck("Shizuku", if (shell == io.github.jackwener.dsh.core.platform.ShellState.NotInstalled) null else shell.ready,
             listOfNotNull(shellStateLabel(context, shell), shellStateHint(context, shell)).joinToString(" · "), shellFixIntent(shizuku.access, shell, shizukuInstaller.bundled))
+        val adb = localAdb.state.value
+        if (adb.pairedOn) checks += DoctorCheck(context.getString(R.string.adb_card_title), adb.ready, localAdbStateLabel(context, adb), null)
         agentScreen.lastCreateError?.let { checks += DoctorCheck(context.getString(R.string.agent_screen_doctor), false, context.getString(R.string.agent_screen_create_failed, it)) }
             ?: agentScreen.degradedReason?.let { checks += DoctorCheck(context.getString(R.string.agent_screen_doctor), true, context.getString(R.string.agent_screen_degraded)) }
         val signedIn = account.signedIn

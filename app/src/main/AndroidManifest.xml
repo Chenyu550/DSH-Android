@@ -41,6 +41,9 @@
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <!-- termux_run (#68): commands in the user's own Termux through its RunCommandService (runtime permission Termux defines). -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+    <!-- Own ADB channel (#71): granted to DSH by itself over that channel (`pm grant`, a development
+         permission), so it can turn wireless debugging back on after a reboot (adb_wifi_enabled). -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
 
     <queries>
         <intent><action android:name="android.intent.action.MAIN" /></intent>
@@ -272,6 +275,8 @@
         <receiver android:name=".core.trigger.TriggerReceiver" android:exported="false" />
         <!-- Termux's command results (the PendingIntent termux_run hands to RunCommandService). -->
         <receiver android:name=".core.platform.TermuxResultReceiver" android:exported="false" />
+        <!-- The wireless-debugging pairing notification's code reply and 取消 (#71). -->
+        <receiver android:name=".core.platform.adb.AdbPairingReceiver" android:exported="false" />
         <receiver android:name=".core.trigger.BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

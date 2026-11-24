@@ -70,6 +70,14 @@ import io.github.jackwener.dsh.feature.settings.ShellGuideActions
 import io.github.jackwener.dsh.feature.settings.ShellGuideBody
 import io.github.jackwener.dsh.feature.settings.rememberShellGuideFlow
 import io.github.jackwener.dsh.feature.settings.rememberShellState
+import io.github.jackwener.dsh.feature.settings.localAdbOf
+import io.github.jackwener.dsh.feature.settings.localAdbStateLabel
+import io.github.jackwener.dsh.feature.settings.wirelessDebuggingIntent
+import io.github.jackwener.dsh.core.platform.ShellState
+import io.github.jackwener.dsh.core.platform.adb.LocalAdbState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import io.github.jackwener.dsh.feature.settings.isZh
 
 /** The approval-style card frame: warn border, warn strip, scrolling body, right-aligned actions. */
@@ -124,19 +132,37 @@ fun PermissionCard(p: PendingPermission, onAnswer: (Boolean) -> Unit) {
 }
 
 /**
- * Just-in-time Shizuku card: the guide for the current state (install / open / authorize). The
- * waiting call resumes on its own once Shizuku is ready (ShellGate watches the state); 不用了 lets
+ * Just-in-time shell card: the Shizuku guide for the current state (install / open / authorize), or,
+ * when DSH's own ADB channel is set up but cannot connect right now (#71), how to bring that back.
+ * The waiting call resumes on its own once either is ready (ShellGate watches both); 不用了 lets
  * the tool take its non-shell path or tell the model, and is remembered for the session.
  */
 @Composable
 private fun ShizukuCard(p: PendingPermission, onAnswer: (Boolean) -> Unit) {
     val (access, s) = rememberShellState()
     val flow = rememberShellGuideFlow(access, s)
+    val context = LocalContext.current
+    val adb = remember { localAdbOf(context) }
+    val a by adb.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
     var answered by remember(p.requestKey) { mutableStateOf(false) }
-    AttentionCard(stringResource(R.string.shz_strip), answered || s.ready, body = {
-        ShellGuideBody(s, stringResource(ToolPresentation.info(p.toolName).title), flow)
+    // Someone who chose the ADB channel over Shizuku gets its guide, not "install Shizuku".
+    val viaAdb = a.pairedOn && !a.ready && !s.ready && s == ShellState.NotInstalled
+    AttentionCard(stringResource(R.string.shz_strip), answered || s.ready || a.ready, body = {
+        if (viaAdb) {
+            Text(stringResource(R.string.adb_jit_title), style = DshType.s14m.copy(lineHeight = DshType.base16.lineHeight), color = Dsh.colors.labelPrimary)
+            Text(stringResource(R.string.adb_jit_body, stringResource(ToolPresentation.info(p.toolName).title)), style = DshType.xs13, color = Dsh.colors.labelSecondary)
+            Text(localAdbStateLabel(context, a), style = DshType.xxs12, color = Dsh.colors.labelTertiary)
+        } else {
+            ShellGuideBody(s, stringResource(ToolPresentation.info(p.toolName).title), flow)
+            if (adb.supported && a == LocalAdbState.NotPaired && !s.ready) Text(stringResource(R.string.adb_jit_alt), style = DshType.xxs12, color = Dsh.colors.labelTertiary)
+        }
     }) {
-        ShellGuideActions(s, flow, onDecline = { answered = true; onAnswer(false) }, enabled = !answered)
+        if (viaAdb) {
+            DButton(stringResource(R.string.shz_decline), { answered = true; onAnswer(false) }, variant = BtnVariant.Outline, enabled = !answered)
+            DButton(stringResource(R.string.shz_dev_options), { runCatching { context.startActivity(wirelessDebuggingIntent()) } }, variant = BtnVariant.Outline, enabled = !answered)
+            DButton(stringResource(R.string.adb_retry), { scope.launch { adb.connect(userInitiated = true) } }, enabled = !answered && a != LocalAdbState.Connecting)
+        } else ShellGuideActions(s, flow, onDecline = { answered = true; onAnswer(false) }, enabled = !answered)
     }
 }
 

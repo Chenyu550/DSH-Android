@@ -43,7 +43,7 @@ const SHELL_TOOLS = new Map([
 ])
 /**
  * Device tools that run a shell command line outside the engine: adb_shell as the Android shell user
- * (uid 2000; runs from "/", like `adb shell`) and termux_run in the user's own Termux (#68; runs in
+ * (uid 2000 through Shizuku or the app's own wireless-debugging ADB; runs from "/", like `adb shell`) and termux_run in the user's own Termux (#68; runs in
  * its `cwd` argument, else Termux's home). The same hardline floor applies, judged from that
  * directory with HOME set to the tool's home. They keep the device tool's risk-based approval.
  */
@@ -234,7 +234,7 @@ You run inside the DSH app on the user's own Android phone, not on a server or d
 Tool priority — always prefer the most direct, least fragile path:
 1. ${tier1}
 2. Intents and deep links (app_open_link, app_send_intent, share_to_app).
-3. Shizuku-backed tools (wifi_toggle, bluetooth_toggle, setting_put; adb_shell for pm, am, cmd, dumpsys, logcat or Android/data when no dedicated tool fits) when available.
+3. Shell-user tools (through Shizuku or DSH's own wireless-debugging ADB: wifi_toggle, bluetooth_toggle, setting_put; adb_shell for pm, am, cmd, dumpsys, logcat or Android/data when no dedicated tool fits) when available.
 4. Screen automation (screen_read, screen_tap, screen_type, …) only when nothing above can do the job; it needs the phone unlocked and is slow and brittle.
 Each device tool's description ends with its policy line: risk read runs directly; write and sensitive (private data) may ask the user, depending on the permission mode; dangerous always asks. A tool marked "needs the phone unlocked" waits while the phone is locked (the user gets a notification) and returns waiting_for_user without acting if nobody unlocks it in time; tell the user when that happens instead of reporting the task as done.` : 'This conversation has no device tools: you cannot act on the phone here.'}
 

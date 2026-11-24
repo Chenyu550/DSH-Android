@@ -7,7 +7,7 @@ import android.content.pm.PackageManager
 import android.provider.Settings
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jackwener.dsh.core.platform.AppVisibility
-import io.github.jackwener.dsh.core.platform.ShizukuShell
+import io.github.jackwener.dsh.core.platform.DeviceShell
 import io.github.jackwener.dsh.service.DshAccessibilityService
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -20,7 +20,7 @@ import javax.inject.Singleton
 @Singleton
 class ActivityLauncher @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val shizuku: ShizukuShell,
+    private val shizuku: DeviceShell,
     private val agent: AgentScreen,
     private val knowledge: AppKnowledge,
 ) {
@@ -40,12 +40,12 @@ class ActivityLauncher @Inject constructor(
      */
     private suspend fun start(intent: Intent, displayId: Int? = null, expect: String? = null): String {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (displayId == null && (mayStartFromBackground() || !shizuku.available)) {
+        if (displayId == null && (mayStartFromBackground() || !shizuku.available())) {
             if (!mayStartFromBackground()) throw LaunchBlocked("Android does not let DSH open other apps while it is in the background " +
-                "(no overlay permission, accessibility service or Shizuku). Ask the user to open it, or to enable DSH's accessibility service.")
+                "(no overlay permission, accessibility service or shell access). Ask the user to open it, or to enable DSH's accessibility service.")
             try { context.startActivity(intent) }
             catch (e: ActivityNotFoundException) { throw InvalidArgsException("No app can handle this: ${e.message}") }
-            catch (e: SecurityException) { if (!shizuku.available) throw e; return viaShell(intent, null, expect) }
+            catch (e: SecurityException) { if (!shizuku.available()) throw e; return viaShell(intent, null, expect) }
             return "ok" + confirm(expect)
         }
         return viaShell(intent, displayId, expect)
@@ -68,7 +68,7 @@ class ActivityLauncher @Inject constructor(
         val out = r.output
         if (r.code != 0 || out.contains("Error") || (out.contains("Status:") && !out.contains("Status: ok")))
             throw IllegalStateException(out.lines().firstOrNull { it.contains("Error") || it.contains("Status") }?.trim() ?: out.take(300))
-        return "ok (via Shizuku)" + if (displayId == null) confirm(expect) else confirmOn(displayId, expect)
+        return "ok (via ${r.via})" + if (displayId == null) confirm(expect) else confirmOn(displayId, expect)
     }
 
     private fun shellQuote(s: String) = "'" + s.replace("'", "'\\''") + "'"

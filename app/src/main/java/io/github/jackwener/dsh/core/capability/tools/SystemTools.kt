@@ -53,7 +53,8 @@ class SystemTools @Inject constructor(
     private val launcher: ActivityLauncher,
     private val termux: TermuxBridge,
 ) : ToolSet {
-    private val shizuku get() = gate.shell
+    /** Shell-user commands: Shizuku, else DSH's own wireless-debugging ADB channel (#71). */
+    private val deviceShell get() = gate.shell
 
     /** When the system's next alarm clock rings (epoch ms), or null when none is reported. */
     private fun nextAlarm(): Long? = runCatching { context.getSystemService(AlarmManager::class.java).nextAlarmClock?.triggerTime }.getOrNull()
@@ -68,13 +69,17 @@ class SystemTools @Inject constructor(
         else -> AudioManager.STREAM_MUSIC
     }
 
-    private suspend fun shell(cmd: String, what: String): ToolResult {
-        if (!shizuku.available) throw ShellUnavailableException(gate.access.state.value)
-        val r = shizuku.exec(cmd)
-        return if (r.code == 0) ToolResult.text("Done via Shizuku: $what. ${r.output.trim()}".trim()) else ToolResult.error("failed", r.output.ifBlank { "exit ${r.code}" })
+    private suspend fun run(cmd: String): io.github.jackwener.dsh.core.platform.ShellResult {
+        if (!deviceShell.available()) throw ShellUnavailableException(gate.access.state.value)
+        return deviceShell.exec(cmd)
     }
 
-    /** Shizuku attempt for a [ShellUse.Fallback] tool: null (→ fallback path) when it fails. */
+    private suspend fun shell(cmd: String, what: String): ToolResult {
+        val r = run(cmd)
+        return if (r.code == 0) ToolResult.text("Done via ${r.via}: $what. ${r.output.trim()}".trim()) else ToolResult.error("failed", r.output.ifBlank { "exit ${r.code}" })
+    }
+
+    /** Shell attempt for a [ShellUse.Fallback] tool: null (→ fallback path) when it fails. */
     private suspend fun shellOrNull(cmd: String, what: String): ToolResult? = runCatching { shell(cmd, what) }.getOrNull()?.takeIf { it.ok }
 
     /**
@@ -82,7 +87,7 @@ class SystemTools @Inject constructor(
      * only lets DSH open it while DSH is visible (or may draw overlays); otherwise say so plainly.
      */
     private fun openForUser(intent: Intent, what: String): ToolResult {
-        val reason = gate.access.state.value.let { if (it.ready) "the Shizuku command failed" else it.reason }
+        val reason = gate.access.state.value.let { if (it.ready || deviceShell.adb.state.value.ready) "the shell command failed" else deviceShell.reason() }
         if (!AppVisibility.isForeground && !Settings.canDrawOverlays(context))
             return ToolResult.error("needs_user", "Could not $what directly ($reason) and Android blocks opening system panels while DSH is in the background. Ask the user to do it.")
         return runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.fold(
@@ -281,7 +286,7 @@ class SystemTools @Inject constructor(
             }
         },
         object : Tool("wifi_toggle", ToolGroup.System, Risk.write, false,
-            "Turn Wi-Fi on/off. Directly through Shizuku when available; otherwise opens the system Wi-Fi panel for the user to tap.",
+            "Turn Wi-Fi on/off. Directly through the shell (Shizuku or ADB) when available; otherwise opens the system Wi-Fi panel for the user to tap.",
             { bool("on", "", required = true) }, ShellUse.Fallback, "open the system Wi-Fi panel and the user taps the switch") {
             override suspend fun invoke(args: JsonObject, call: CallContext): ToolResult {
                 val on = args.bool("on") == true
@@ -292,7 +297,7 @@ class SystemTools @Inject constructor(
             }
         },
         object : Tool("bluetooth_toggle", ToolGroup.System, Risk.write, false,
-            "Turn Bluetooth on/off. Directly through Shizuku when available; otherwise shows the system Bluetooth prompt/page for the user to confirm.",
+            "Turn Bluetooth on/off. Directly through the shell (Shizuku or ADB) when available; otherwise shows the system Bluetooth prompt/page for the user to confirm.",
             { bool("on", "", required = true) }, ShellUse.Fallback, "show the system Bluetooth prompt or page and the user confirms") {
             override suspend fun invoke(args: JsonObject, call: CallContext): ToolResult {
                 val on = args.bool("on") == true
@@ -306,7 +311,7 @@ class SystemTools @Inject constructor(
             }
         },
         object : Tool("mobile_data_toggle", ToolGroup.System, Risk.write, false,
-            "Turn mobile data on/off. Directly through Shizuku when available; otherwise opens the system Internet panel for the user to tap.",
+            "Turn mobile data on/off. Directly through the shell (Shizuku or ADB) when available; otherwise opens the system Internet panel for the user to tap.",
             { bool("on", "", required = true) }, ShellUse.Fallback, "open the system Internet panel and the user taps the switch") {
             override suspend fun invoke(args: JsonObject, call: CallContext): ToolResult {
                 val on = args.bool("on") == true
@@ -315,23 +320,22 @@ class SystemTools @Inject constructor(
             }
         },
         object : Tool("setting_get", ToolGroup.System, Risk.read, false,
-            "Read Android settings: one key, or (key omitted, needs Shizuku) every key in a namespace matching filter. Common keys: " +
+            "Read Android settings: one key, or (key omitted, needs shell access) every key in a namespace matching filter. Common keys: " +
                 "global airplane_mode_on, mobile_data, wifi_on, bluetooth_on, auto_time; system screen_off_timeout (ms), screen_brightness (0-255), " +
                 "screen_brightness_mode, accelerometer_rotation (auto-rotate), font_scale; secure location_mode, default_input_method, ui_night_mode.",
             {
                 string("namespace", "", required = true, enum = listOf("system", "secure", "global"))
                 string("key", "Setting key (omit to list)"); string("filter", "When listing: only keys containing this")
-            }, ShellUse.Fallback, "read public keys directly (listing and hidden keys need Shizuku)") {
+            }, ShellUse.Fallback, "read public keys directly (listing and hidden keys need shell access)") {
             override suspend fun invoke(args: JsonObject, call: CallContext): ToolResult {
                 val ns = args.reqStr("namespace")
                 val key = args.str("key")?.filter { it.isLetterOrDigit() || it in "_." }
                 if (key == null) {
-                    val r = runCatching { shell("settings list $ns", "list settings") }.getOrNull()
-                        ?: return ToolResult.error("shizuku_unavailable", "Listing settings needs Shizuku (${gate.access.state.value.reason}); read a specific key instead.")
-                    if (!r.ok) return r
+                    val r = runCatching { run("settings list $ns") }.getOrNull()
+                        ?: return ToolResult.error("shizuku_unavailable", "Listing settings needs shell access (${deviceShell.reason()}); read a specific key instead.")
+                    if (r.code != 0) return ToolResult.error("failed", r.output.ifBlank { "exit ${r.code}" })
                     val f = args.str("filter")?.lowercase()
-                    val lines = (r.content.firstOrNull() as? io.github.jackwener.dsh.core.capability.Content.Text)?.text.orEmpty()
-                        .removePrefix("Done via Shizuku: list settings.").lines().map { it.trim() }.filter { it.isNotEmpty() && (f == null || it.lowercase().contains(f)) }
+                    val lines = r.output.lines().map { it.trim() }.filter { it.isNotEmpty() && (f == null || it.lowercase().contains(f)) }
                     return ToolResult.text(lines.take(300).joinToString("\n").ifEmpty { "No matching keys." } + if (lines.size > 300) "\n…(${lines.size - 300} more; use filter)" else "")
                 }
                 val cr = context.contentResolver
@@ -339,11 +343,11 @@ class SystemTools @Inject constructor(
                     when (ns) { "system" -> Settings.System.getString(cr, key); "secure" -> Settings.Secure.getString(cr, key); else -> Settings.Global.getString(cr, key) }
                 }
                 direct.getOrNull()?.let { return ToolResult.text("$ns $key = $it") }
-                if (shizuku.available) {
-                    val r = shizuku.exec("settings get $ns $key")
-                    if (r.code == 0) return ToolResult.text("$ns $key = ${r.output.trim()} (via Shizuku)")
+                if (deviceShell.available()) {
+                    val r = deviceShell.exec("settings get $ns $key")
+                    if (r.code == 0) return ToolResult.text("$ns $key = ${r.output.trim()} (via ${r.via})")
                 }
-                return if (direct.isFailure) ToolResult.error("not_authorized", "Android does not let apps read $ns/$key (${direct.exceptionOrNull()?.javaClass?.simpleName}); it needs Shizuku.")
+                return if (direct.isFailure) ToolResult.error("not_authorized", "Android does not let apps read $ns/$key (${direct.exceptionOrNull()?.javaClass?.simpleName}); it needs shell access (Shizuku or wireless-debugging ADB).")
                 else ToolResult.text("$ns $key is not set (null).")
             }
         },
@@ -372,7 +376,7 @@ class SystemTools @Inject constructor(
             }
         },
         object : Tool("setting_put", ToolGroup.System, Risk.dangerous, false,
-            "Write an Android setting via `settings put <namespace> <key> <value>` (needs Shizuku). For things no dedicated tool covers.", {
+            "Write an Android setting via `settings put <namespace> <key> <value>` (needs shell access). For things no dedicated tool covers.", {
                 string("namespace", "", required = true, enum = listOf("system", "secure", "global"))
                 string("key", "", required = true); string("value", "", required = true)
             }, ShellUse.Required) {
@@ -390,9 +394,9 @@ class SystemTools @Inject constructor(
                 // The hardline floor lives in the engine (plugin-guard); a direct rule step would skip it.
                 if (!call.viaEngine) return ToolResult.error("not_authorized", AdbShell.NOT_FROM_ENGINE)
                 val cmd = args.reqStr("command")
-                if (!shizuku.available) throw ShellUnavailableException(gate.access.state.value)
+                if (!deviceShell.available()) throw ShellUnavailableException(gate.access.state.value)
                 val timeoutS = AdbShell.timeoutS(args.int("timeout_s"))
-                val r = shizuku.exec(cmd, timeoutS * 1000L)
+                val r = deviceShell.exec(cmd, timeoutS * 1000L)
                 return ToolResult.text(AdbShell.format(r.code, r.output, timeoutS))
             }
         },
@@ -427,7 +431,7 @@ internal object TermuxRun {
         "not as a direct automation step. Make the automation an agent action instead."
 }
 
-/** `adb_shell`: a command as the shell user through Shizuku (= `adb shell <command>`), for what an app's own shell cannot do. */
+/** `adb_shell`: a command as the shell user (= `adb shell <command>`) through Shizuku or DSH's own ADB channel, for what an app's own shell cannot do. */
 internal object AdbShell {
     const val NAME = "adb_shell"
     const val DEFAULT_TIMEOUT_S = 30
@@ -436,7 +440,7 @@ internal object AdbShell {
     const val OUTPUT_CAP = 64_000
     const val TIMED_OUT = 124
 
-    const val DESCRIPTION = "Run a command as the Android shell user through Shizuku: the same as `adb shell <command>` from a computer, on this phone. " +
+    const val DESCRIPTION = "Run a command as the Android shell user (uid 2000, through Shizuku or DSH's wireless-debugging ADB): the same as `adb shell <command>` from a computer, on this phone. " +
         "Only for what the bash tool cannot do as an app: pm (list, enable/disable, grant), am (start, force-stop), cmd, dumpsys, settings, wm, input, " +
         "appops, logcat -d, and files under Android/data or Android/obb. Prefer a dedicated tool when one fits (file_*, setting_put, wifi_toggle, app_*). " +
         "Runs /system/bin/sh from \"/\" without root and without a terminal: no prompts, and a command that never ends (logcat without -d, top without -n) " +

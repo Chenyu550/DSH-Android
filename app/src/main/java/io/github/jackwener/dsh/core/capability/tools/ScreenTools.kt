@@ -46,7 +46,7 @@ import io.github.jackwener.dsh.core.capability.reqStr
 import io.github.jackwener.dsh.core.capability.str
 import io.github.jackwener.dsh.core.model.Risk
 import io.github.jackwener.dsh.core.model.ToolGroup
-import io.github.jackwener.dsh.core.platform.ShizukuShell
+import io.github.jackwener.dsh.core.platform.DeviceShell
 import io.github.jackwener.dsh.core.session.SessionStore
 import io.github.jackwener.dsh.core.session.TakeoverAnswer
 import io.github.jackwener.dsh.service.DshAccessibilityService
@@ -68,7 +68,7 @@ import kotlin.math.hypot
 @Singleton
 class ScreenTools @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val shizuku: ShizukuShell,
+    private val shizuku: DeviceShell,
     private val textInput: TextInput,
     private val sessions: dagger.Lazy<SessionStore>,
     private val agent: AgentScreen,
@@ -286,7 +286,7 @@ class ScreenTools @Inject constructor(
         }
     }
 
-    private suspend fun shellKey(code: Int, d: Int): Boolean = shizuku.available && shizuku.exec("input -d $d keyevent $code").code == 0
+    private suspend fun shellKey(code: Int, d: Int): Boolean = shizuku.available() && shizuku.exec("input -d $d keyevent $code").code == 0
 
     /** An element (or recognized text line) the model referred to by id or text. */
     private class Hit(val node: AccessibilityNodeInfo?, val x: Int, val y: Int, val label: String?, val note: String? = null)
@@ -418,8 +418,8 @@ class ScreenTools @Inject constructor(
                 val long = args.str("kind") == "long"
                 val px = args.int("x"); val py = args.int("y")
                 // Coordinates still work through Shizuku alone, without effects (no accessibility tree to compare).
-                if (DshAccessibilityService.instance == null && px != null && py != null && shizuku.available)
-                    return ToolResult.text(if (tapAt(px.toFloat(), py.toFloat(), long, d)) "Tapped at $px,$py (Shizuku; no accessibility service, so the effect is unknown)" else "Tap was cancelled")
+                if (DshAccessibilityService.instance == null && px != null && py != null && shizuku.available())
+                    return ToolResult.text(if (tapAt(px.toFloat(), py.toFloat(), long, d)) "Tapped at $px,$py (shell input; no accessibility service, so the effect is unknown)" else "Tap was cancelled")
                 fun target(r: Read) = locate(call, d, args, r) ?: run {
                     val x = px ?: throw InvalidArgsException("Give node, text, or x/y")
                     val y = py ?: throw InvalidArgsException("missing y")
@@ -446,7 +446,7 @@ class ScreenTools @Inject constructor(
             private suspend fun tapAt(x: Float, y: Float, long: Boolean, d: Int): Boolean {
                 val a11y = DshAccessibilityService.instance
                 return if (a11y != null) a11y.tap(x, y, if (long) 700 else 60, d)
-                else if (shizuku.available) shizuku.exec(if (long) "input -d $d swipe ${x.toInt()} ${y.toInt()} ${x.toInt()} ${y.toInt()} 700"
+                else if (shizuku.available()) shizuku.exec(if (long) "input -d $d swipe ${x.toInt()} ${y.toInt()} ${x.toInt()} ${y.toInt()} 700"
                     else "input -d $d tap ${x.toInt()} ${y.toInt()}").code == 0
                 else throw PermissionMissingException("Accessibility service (DSH screen control)")
             }
@@ -571,10 +571,10 @@ class ScreenTools @Inject constructor(
                 val watch = if (t.agent) agent.watch(call.sessionId) else null
                 val done: String = when (key) {
                     "enter", "search" -> pressEnter(key == "search", d, r) ?: return ToolResult.error("failed",
-                        "Could not press $key: the focused field takes no editor action and Shizuku is not available. Tap the on-screen search/send button instead (screen_read to find it).")
+                        "Could not press $key: the focused field takes no editor action and shell access (Shizuku or ADB) is not available. Tap the on-screen search/send button instead (screen_read to find it).")
                     "delete" -> when {
                         d == Display.DEFAULT_DISPLAY && svc().deleteBackward() -> "Deleted one character"
-                        shellKey(67, d) -> "Pressed delete (Shizuku)"
+                        shellKey(67, d) -> "Pressed delete (shell)"
                         else -> return ToolResult.error("failed", "No focused text field to delete from.")
                     }
                     else -> {
@@ -644,7 +644,7 @@ class ScreenTools @Inject constructor(
             val f = r.snap.nodes.firstOrNull { it.isEditable && it.isFocused }
             if (f != null && f.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)) return if (search) "Search" else "Enter"
         }
-        if (shellKey(66, d)) return "Enter (Shizuku)"
+        if (shellKey(66, d)) return "Enter (shell)"
         return null
     }
 }

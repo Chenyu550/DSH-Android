@@ -455,6 +455,7 @@ private fun PhoneSection(vm: SettingsViewModel, onNotificationApps: () -> Unit) 
     }
     SettingsGroupTitle(stringResource(R.string.shz_group))
     ShellAccessCard()
+    LocalAdbCard(Modifier.padding(top = 8.dp))
     val s by vm.settings.collectAsStateWithLifecycle()
     SettingsCard(Modifier.padding(top = 8.dp)) {
         val degraded = remember { vm.agentScreenDegraded }

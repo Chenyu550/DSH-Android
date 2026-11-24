@@ -12,7 +12,7 @@ import io.github.jackwener.dsh.core.capability.reqStr
 import io.github.jackwener.dsh.core.model.Risk
 import io.github.jackwener.dsh.core.model.ToolGroup
 import io.github.jackwener.dsh.core.capability.ShellUse
-import io.github.jackwener.dsh.core.platform.ShizukuShell
+import io.github.jackwener.dsh.core.platform.DeviceShell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
@@ -20,7 +20,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class ClipboardTools @Inject constructor(@ApplicationContext private val context: Context, private val shizuku: ShizukuShell) : ToolSet {
+class ClipboardTools @Inject constructor(@ApplicationContext private val context: Context, private val shizuku: DeviceShell) : ToolSet {
     private val cm get() = context.getSystemService(ClipboardManager::class.java)
 
     override val tools = listOf(
@@ -35,14 +35,14 @@ class ClipboardTools @Inject constructor(@ApplicationContext private val context
                 if (text != null) return ToolResult.text(text.ifEmpty { "(the clipboard holds empty text)" })
                 // In front, a null clip really means empty (in the background Android hides it, so it says nothing).
                 if (!readable && io.github.jackwener.dsh.core.platform.AppVisibility.isForeground) return ToolResult.text("The clipboard is empty.")
-                if (shizuku.available) {
+                if (shizuku.available()) {
                     // `cmd clipboard` exists on Android 13+; the old `service call` path prints a binder Parcel dump, which is not text.
                     val r = shizuku.exec("cmd clipboard get-primary-clip 2>/dev/null")
                     val out = r.output.trim()
                     if (r.code == 0 && out.isNotEmpty() && !out.startsWith("Result: Parcel") && !out.contains("Unknown command"))
-                        return ToolResult.text("(read via Shizuku) " + out.removePrefix("ClipData { text/plain ").removeSuffix("}"))
+                        return ToolResult.text("(read via ${r.via}) " + out.removePrefix("ClipData { text/plain ").removeSuffix("}"))
                 }
-                return ToolResult.error("failed", "Clipboard is not readable right now: Android only lets the app in front read it, and ${shizuku.access.state.value.reason}. Open DSH and retry, or ask the user to paste it.")
+                return ToolResult.error("failed", "Clipboard is not readable right now: Android only lets the app in front read it, and ${shizuku.reason()}. Open DSH and retry, or ask the user to paste it.")
             }
         },
         object : Tool("clipboard_set", ToolGroup.Clipboard, Risk.write, false, "Put text on the clipboard.", {
