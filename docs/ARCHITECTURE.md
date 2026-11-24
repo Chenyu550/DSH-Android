@@ -37,7 +37,7 @@ Shizuku 用户服务（shell uid，可选）：ShellUserService
 
 | 变量 | 值 |
 |---|---|
-| `HOME` | `files/home`，也是 dsh 的工作目录 |
+| `HOME` | `files/home`，也是 dsh 的工作目录；通过 `WorkspaceProvider`（DocumentsProvider，#76）在系统“文件”App 和各应用的文件选择器里显示为“DSH” |
 | `DSH_HOME` | `files/dsh-home`（profile、会话、账号凭据、预算账本） |
 | `TMPDIR` | `cacheDir/tmp` |
 | `NODE_EXTRA_CA_CERTS` | 由 `AndroidCAStore`（系统 CA 去掉用户停用的，加上用户安装的）导出的 PEM，摘要不变就不重写 |
@@ -104,6 +104,7 @@ Shizuku 用户服务（shell uid，可选）：ShellUserService
   - 只连 `127.0.0.1`；连接端口通过 mDNS（`_adb-tls-connect._tcp`，只认本机网卡地址的服务）发现，失败时可以手动填写；配对端口同样通过 mDNS（`_adb-tls-pairing._tcp`）自动填入。系统的配对弹窗一离开前台就会关闭，所以和 Shizuku 一样在通知里用 RemoteInput 输入配对码（`AdbPairingNotifier` / `AdbPairingReceiver`），分屏时也可以直接在卡片里填。
   - `LocalAdb` 是状态机（未配对 / 已断开 / 连接中 / 就绪（uid） / 连不上：无线调试未开、配对被删除、其他失败），按需连接、空闲 3 分钟断开，避免系统一直显示“已连接无线调试”；用户点「断开」后不再自动连接。首次连上后用 `pm grant` 给自己 `WRITE_SECURE_SETTINGS`，重启后无线调试被关掉时可以自己把 `adb_wifi_enabled` 打开（Shizuku 的开机启动也是这么做的）。
   - `DeviceShell` 把两条通道放在同一个入口：Shizuku 就绪就用 Shizuku，否则用自连 ADB。`adb_shell`、`setting_put`、`setting_get`（列表和隐藏键）、Wi‑Fi/蓝牙/移动数据开关、剪贴板、`input`、`ime`、`am start` 都走它；结果里写明走的是哪条（`via Shizuku` / `via ADB`）。需要 Shizuku 用户服务 binder 的能力（后台屏、`ShellFiles` 访问 Android/data）仍然只走 Shizuku。`ShellGate` 等任意一条就绪即可继续；已配对但连不上时，输入框位置的卡片引导打开无线调试，不再让用户装 Shizuku。
+- 工作目录（`core/platform/Workspace`、`WorkspaceProvider`，#76）：整个 App 只有一个工作目录 `files/home`（引擎的 `HOME`，每个会话的起始目录），不按会话分散到各处，也不搬到共享存储（那需要“所有文件访问”权限，FUSE 上也没有 Node 依赖的硬链接和文件锁）。它通过一个 DocumentsProvider 暴露成存储根“DSH”：系统“文件”App 和任何应用的文件/文件夹选择器都能直接浏览、打开、编辑、新建、移动、删除里面的文件，不用复制，也不需要存储权限；只有系统持有 `MANAGE_DOCUMENTS`，别的应用只能拿到用户选给它的文件。文档 ID 是 `home/<相对路径>`，解析符号链接后仍须在 `home` 之内。设置 → 智能体 →“在文件中打开工作目录”用 `ACTION_VIEW` 打开这个根。会话可以选 `home` 下的子文件夹作工作目录（输入框“/”命令“工作目录”，用系统文件夹选择器选；dsh 0.2.2 的 `session/working-directory/set`，记在会话日志里，智能体的 `working_directory` 工具改的是同一个），还没发过消息的会话在第一次发送前设置。
 - Termux（`core/platform/Termux`，#68）：`termux_run` 和内置 bash 并列，不替代它。App 声明并在首次使用时申请 Termux 定义的运行时权限 `com.termux.permission.RUN_COMMAND`（权限卡片；设置 → 手机权限里只在装了 Termux 时列出），用 Termux 文档里的 RUN_COMMAND Intent 启动 `RunCommandService`：后台任务（不开终端会话），`$PREFIX/bin/timeout -k 5 <t> bash -c <command>`，工作目录默认 Termux 的 home。结果通过一个 PendingIntent 回到 `TermuxResultReceiver`（不导出），带回 stdout、stderr、退出码以及 Termux 截断前的长度。失败原因都有明确的错误码：未安装或服务起不来（`termux_unavailable`）、没开 `allow-external-apps`（`termux_not_allowed`，消息里给出要在 Termux 里执行的那行命令）、没授权（`permission_missing`，走权限卡片）、超时后仍无回复（`termux_no_reply`）。
 - 无障碍（`DshAccessibilityService`）：读界面元素树、手势、截图（Android 14+ 遇到 `FLAG_SECURE` 页面时显示“请你来操作”的接管卡片）。没开无障碍但 Shizuku 可用时，点按和滑动改用 `input` 命令。
 - `screen_type` 逐级回退，每一步都回读字段内容确认：`ACTION_SET_TEXT` → 无障碍输入连接（Android 13+）→ DSH 输入法（当前就是它时）→ Shizuku `input text`（ASCII），或用 `ime set` 临时切到 DSH 输入法再切回 → 剪贴板粘贴。
@@ -142,7 +143,7 @@ Shizuku 用户服务（shell uid，可选）：ShellUserService
 
 - `MainActivity` 用 Navigation Compose，没有底部导航。没有凭据时先进入引导页（API key 或账号登录），然后是可选的 Shizuku 增强步骤，最后到首页。
 - 首页 `HomeScreen`：单会话页，左侧是模态抽屉 `SessionDrawer`（新会话、自动化、会话列表、账号）。顶部在“对话 / 轨迹”两个视图之间切换。对话视图（`Stream`、`ToolRows`）把工具调用折叠成步骤行；轨迹视图（`feature/trajectory/`）移植自 dsh ui-trajectory：时间轴总览，加按轮次分组的记录，点开是检查器。
-- 输入框位置一次只显示一样东西，优先级是：授权卡片 → 审批卡片 → 问题卡片 → 输入框。运行中发送的消息默认进入队列（可在设置里改）。附件支持最多 4 张图片，文档会复制到 `home/attachments`。
+- 输入框位置一次只显示一样东西，优先级是：授权卡片 → 审批卡片 → 问题卡片 → 输入框。运行中发送的消息默认进入队列（可在设置里改）。附件支持最多 4 张图片，文档会复制到 `home/attachments`（从“DSH”里选的文件直接引用原文件，不复制）。
 - 输入框工具栏：`+`、权限标签、会话模式标签、上下文环、模型标签、发送。
 - 设置 `SettingsScreen`：分为账号、通用、模型服务、能力（工具组开关）、会话模式（列表 + 编辑页）、用量、手机权限（`PermissionCatalog`，各项权限用到时才申请）、关于（自检 `ReliabilityDoctor`、引擎重启、崩溃记录）。
 - 视觉对齐 dsh Web：颜色、字号、圆角取自 dsh 的 ui-theme，映射到 Material 3，不启用动态取色。见 [design-tokens.md](design-tokens.md) 和 `core/designsystem/`。

@@ -210,6 +210,9 @@ data class ComposerActions(
     val onNewSession: (() -> Unit)? = null,
     val onTrajectory: (() -> Unit)? = null,
     val onAutomation: (() -> Unit)? = null,
+    /** 工作目录 (#76): picks the conversation's folder; [workingDirectory] is the current one as shown. */
+    val onWorkingDirectory: (() -> Unit)? = null,
+    val workingDirectory: String? = null,
 )
 
 /**
@@ -301,6 +304,8 @@ fun Composer(
         }
         actions.onNewSession?.let { add(ComposerCommand("new", stringResource(R.string.new_session), R.drawable.dsw_new_chat_outline, run = it)) }
         actions.onTrajectory?.let { add(ComposerCommand("trajectory", stringResource(R.string.view_trajectory), R.drawable.dsw_inspect_outline, stringResource(R.string.cmd_trajectory_desc), run = it)) }
+        actions.onWorkingDirectory?.let { add(ComposerCommand("cwd", stringResource(R.string.workdir_cmd), R.drawable.dsw_folder_open_outline,
+            stringResource(R.string.workdir_cmd_desc, actions.workingDirectory ?: "~"), run = it)) }
         actions.onAutomation?.let { add(ComposerCommand("automation", stringResource(R.string.automation), R.drawable.dsw_clock_outline, run = it)) }
     }
     // "/" + a word: the matching commands, listed in the card above the editor (#76). Not a popup: a popup
@@ -695,8 +700,10 @@ suspend fun addBitmap(state: ComposerState, bmp: Bitmap) {
     if (img != null) state.images += img
 }
 
-/** Copies a picked document into the agent's home so dsh's file tools can read it. */
+/** Copies a picked document into the agent's home so dsh's file tools can read it (one already there is used as is). */
 private fun importFile(context: Context, uri: Uri): FileAttachment? = runCatching {
+    // Picked from the agent's own folder (the DSH root, #76): referenced in place, no copy to go stale.
+    io.github.jackwener.dsh.core.platform.Workspace.fileOfUri(context, uri)?.takeIf { it.isFile }?.let { return@runCatching FileAttachment(it.name, it.path, it.length()) }
     val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null }
         ?: "file_${System.currentTimeMillis()}"
     val dir = File(context.filesDir, "home/attachments").apply { mkdirs() }

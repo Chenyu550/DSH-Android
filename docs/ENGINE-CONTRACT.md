@@ -30,7 +30,7 @@ Environment (set with `Os.setenv` before start):
 | Var | Value |
 |---|---|
 | `DSH_HOME` | `<filesDir>/dsh-home` |
-| `HOME` | `<filesDir>/home` (also the default workspace / cwd) |
+| `HOME` | `<filesDir>/home` (also the default workspace / cwd; the user's "DSH" folder in the system Files app, #76) |
 | `TMPDIR` | `<cacheDir>/tmp` |
 | `SHELL` | `/system/bin/sh` |
 | `PATH` | `<filesDir>/bin:/system/bin:/system/xbin` (`files/bin/rg` → `<nativeLibraryDir>/librg.so`, `files/bin/node` → `<nativeLibraryDir>/libdshnode.so`) |
@@ -225,6 +225,21 @@ an offset past its log (`LogSeqs`), never treating a seq as a cross-generation i
   An edit or retry stands in for its source in the session list while it is not archived or deleted; both show a
   line linking to the other. A failed fork discards the new row and goes back to the source (the edited text returns
   to its composer).
+- `session/working-directory/set { sessionId, path }` → `{ cwd }` (dsh 0.2.2, #76): 工作目录 in the composer (a folder of
+  HOME picked in the system folder picker through the app's documents provider). dsh keeps it per session in the log
+  (`working-directory/change`) and tells the model with a `user/message` `source { kind: 'working-directory' }` at its next
+  step (the chat shows it as a quiet 工作目录 line); the agent's own `working_directory` tool changes the same directory. A
+  conversation the engine does not have yet gets it right before its first `session/prompt` (after `android/session/model`).
+- `android/reasoning/translate { text, targetLanguage }` → `{ text, provider }` | `{ error: { code, message } }`
+  (plugin-guard `translate.js`, row `android-translate`, #15): 翻译 under an expanded 思考 row. dsh's `translator`
+  service (`@deepseek-ai/dsh-experimental-translator`, row `translator`) sends the text to Bing's anonymous Edge endpoint,
+  else Google's when Bing cannot be reached (no key, no model call, no session records); text over its 4000-character
+  request limit goes in paragraph / line pieces. `targetLanguage` is the UI language (`zh-Hans`, `zh-Hant`, `en`, `ru`, …).
+  `code` is dsh's `TranslationErrorCode` (`TRANSLATION_REQUEST_FAILED` / `_TIMEOUT` / `_HTTP_ERROR`: unreachable;
+  `_INVALID_RESPONSE`: unreadable answer). The app sends it on the control channel (never restarts a running engine),
+  keeps results per text and language for the process, and offers 翻译 only when the text's dominant script is not the
+  UI language's (DeepSeek's Chinese reasoning for a Chinese UI has none). dsh's own consumer
+  (`dsh-experimental-client-ui-cot-translation`, a web-client Remote) is pruned.
 - `android/session/model { sessionId, provider, model, reasoningEffort? } | { sessionId, model: null }` →
   `{ selected: { provider, model, reasoningEffort? } }` (plugin-guard `session-model.js`, through patch 10; #53). Each
   conversation's own model (the app's `sessions.modelProvider/modelId/modelEffort`: a copy of the default taken at its

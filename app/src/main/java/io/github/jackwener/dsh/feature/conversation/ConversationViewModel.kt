@@ -180,6 +180,11 @@ open class ConversationController(
 
     fun inspect(callId: String) { view.value = SessionView.Trajectory; focusRecord.value = "k$callId" }
 
+    /** The conversation's working directory (#76): chosen for its first message, else its own; null = home. */
+    val workingDirectory: StateFlow<String?> = combine(currentId, conversation, store.pendingWorkingDirectories) { id, c, p -> p[id] ?: c.cwd }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    fun setWorkingDirectory(path: String, onDone: (Boolean) -> Unit) = viewModelScope.launch { onDone(store.setWorkingDirectory(sessionId.value, path).isSuccess) }
+
     override fun onCleared() { store.setViewing(this, null) }
 }
 
