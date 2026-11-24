@@ -412,6 +412,7 @@ private fun ErrorRow(e: TurnError, onRetry: (TurnError) -> Unit, onOpenSettings:
         accountQuota -> stringResource(R.string.acct_quota_title)
         e.kind == "engine" -> stringResource(R.string.err_engine_title)
         e.kind == "engine_lost" -> stringResource(R.string.err_engine_lost_title)
+        e.kind == io.github.jackwener.dsh.core.remote.RemoteErrors.KIND -> stringResource(R.string.remote_error_title)
         else -> stringResource(R.string.turn_error_title)
     }
     val message = when {
@@ -449,6 +450,11 @@ private fun ErrorRow(e: TurnError, onRetry: (TurnError) -> Unit, onOpenSettings:
                     unavailable != null -> {
                         DButton(stringResource(R.string.err_open_model_settings), { onOpenSettings("Model") }, size = BtnSize.Sm)
                         DButton(stringResource(R.string.retry), { onRetry(e) }, size = BtnSize.Sm, variant = BtnVariant.Outline, icon = R.drawable.dsw_refresh_outline)
+                    }
+                    // Remote mode (#51): the computer could not be reached, refused us, or has no usable dsh.
+                    e.kind == io.github.jackwener.dsh.core.remote.RemoteErrors.KIND -> {
+                        DButton(stringResource(R.string.retry), { onRetry(e) }, size = BtnSize.Sm, icon = R.drawable.dsw_refresh_outline)
+                        DButton(stringResource(R.string.remote_open_settings), { onOpenSettings("Remote") }, size = BtnSize.Sm, variant = BtnVariant.Outline)
                     }
                     e.kind == "engine" || e.kind == "engine_lost" -> {
                         DButton(stringResource(R.string.restart_engine_retry), { onRetry(e) }, size = BtnSize.Sm, icon = R.drawable.dsw_refresh_outline)

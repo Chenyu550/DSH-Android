@@ -77,6 +77,8 @@ fun SessionDrawer(
     onMute: (String, Boolean) -> Unit,
     onArchive: (String, Boolean) -> Unit,
     onDelete: (String) -> Unit,
+    /** Remote mode (#51): the workspace switcher (this phone or a computer), shown above the entries. */
+    workspace: @Composable () -> Unit = {},
 ) {
     val c = Dsh.colors
     var searching by remember { mutableStateOf(false) }
@@ -100,6 +102,7 @@ fun SessionDrawer(
             Spacer(Modifier.width(6.dp))
             Text(stringResource(R.string.new_session), style = DshType.s14, color = c.labelPrimary)
         }
+        workspace()
         PanelEntry(R.drawable.dsw_clock_outline, stringResource(R.string.automation), onAutomation)
         PanelEntry(R.drawable.dsw_shield_outline, stringResource(R.string.drawer_permissions)) { onSettings("Phone") }
         Row(Modifier.fillMaxWidth().heightIn(min = 40.dp).padding(start = 8.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {

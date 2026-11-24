@@ -24,6 +24,8 @@ object Notifications {
     const val ID_MONITOR = 2
     const val ID_BALL = 3
     const val ID_UPDATE = 4
+    /** Remote mode (#51): a computer is connected (core/remote/RemoteService). */
+    const val ID_REMOTE = 6
     /** The group summary over several conversations' notifications. */
     const val ID_SESSIONS_SUMMARY = 5
 

@@ -224,6 +224,14 @@
         </service>
 
         <service
+            android:name=".core.remote.RemoteService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the SSH connection to the user's own computer open while the AI agent there is used from this app (remote mode)." />
+        </service>
+
+        <service
             android:name=".core.trigger.RuleMonitorService"
             android:exported="false"
             android:foregroundServiceType="specialUse">

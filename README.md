@@ -27,7 +27,7 @@
 - **它操作，你照常用手机**：授权后 Agent 能读屏、点按、输入，过程中你可以随时暂停、停止或插话。Android 14 及以上支持“不打扰模式”：配好 Shizuku 或自连 ADB 后，Agent 在虚拟屏幕上操作，不占用你的屏幕。
 - **在任何 App 里随时呼起**：用悬浮球直接对话、派活，也可以把当前这一屏发给它，问“这条怎么回”“帮我记下来”。长按图标的快捷方式（新会话、语音任务、发送当前屏幕）也能绑定到手机的侧边快捷键。
 - **手机里自带 Linux 环境**：Agent 可以跑 Python、处理你发来的文件、运行它自己写的脚本。
-- **出门也能用电脑上的 Agent**：通过 SSH 或 DSH Remote 连接电脑或服务器上的 DSH。只用远程模式的话，手机不用安装本地运行环境。
+- **出门也能用电脑上的 Agent**：在 设置 → 远程主机 填上 IP / 域名、端口和账号密码（或私钥），App 通过 SSH 驱动电脑或服务器上安装的 dsh，对话、轨迹、审批照常在手机上操作，活在电脑上干。
 
 ## 界面一览
 
@@ -39,6 +39,15 @@
 2. 登录 DeepSeek 账号，或者填入 [API key](https://platform.deepseek.com/api_keys)；也可以在 设置 → 模型服务 里添加其他服务商。
 3. 直接说要做什么，比如“列出下载目录里最大的 5 个文件”。用到某项权限时，App 会再引导你开启。
 4. 可选：在 设置 → 手机权限 里一键安装 Shizuku，并在 Shizuku 里打开“开机启动（无线调试）”；装不上 Shizuku 的手机（Android 11+）可以用同一页的「直接 ADB 授权」，用无线调试配对码配对一次即可。
+
+## 连接电脑（远程模式）
+
+1. 电脑（Linux / macOS）开着 sshd，并装好 dsh 0.2.2 及以上：`npm i -g @deepseek-ai/dsh`。
+2. 手机上打开 设置 → 远程主机 → 添加远程主机：填主机地址（IPv4 / IPv6 / 域名）、端口（默认 22）、用户名，选密码或私钥（可带私钥密码）；可选填工作目录、dsh 命令路径、模型和环境变量。
+3. 点「测试连接」，核对弹出的主机指纹（电脑上 `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`）后信任，保存。
+4. 在侧栏顶部把工作区从「本机」切到这台主机，新会话就在电脑上运行。不在同一局域网时，需要公网地址、端口转发或 Tailscale 之类的组网。
+
+远程会话用的是电脑上 dsh 自己的工具和配置；手机能力（读屏、通知、短信等）和会话模式只在本机会话里有。密码和私钥用 Android Keystore 加密保存；主机指纹变化时会拒绝连接并提醒。
 
 ## 能做什么
 
@@ -106,6 +115,7 @@ DSH-Android 不在 Google Play 上分发，又用到了无障碍、通知读取�
 - **国产 ROM**：部分机型需要手动允许“后台弹出界面”和“自启动”，悬浮球和后台自动化才能稳定工作。App 的体检页会提示你。
 - **第三方模型**：只支持 OpenAI 兼容的 Chat Completions 接口（HTTPS）；上下文统一按 128K 计；推理强度只对引擎认得的模型家族（Kimi、GLM、Qwen、GPT、Claude、豆包等）列出它们支持的档位，自定义或改名的模型要在 设置 → 模型服务 → 模型设置 里手动声明「推理控制」，否则不显示推理强度、按接口自己的默认来；联网搜索由 DeepSeek 提供，使用第三方模型时需要另外配置 DeepSeek API key。工具调用的效果取决于所选模型。
 - **冷启动**：引擎冷启动目前大约 5 秒，还在优化。
+- **远程模式**：需要电脑上的 dsh 0.2.2 及以上（Linux / macOS，Windows 的 OpenSSH 暂不支持）。网络断开或切换时，电脑上正在跑的那一轮会被打断，重连后自动续上；远程会话不能附加手机上的文件（图片可以）。
 - **引擎按需运行**：默认任务结束 5 分钟后引擎就停止，App 退到后台后插件的定时器、机器人连接也会随之停止，这是有意的省电设计。用心跳、QQ 机器人这类需要一直在线的插件时，请在 设置 → 关于 → 后台保活 打开「引擎常驻」（会有一条常驻通知），并按同一页的提示允许自启动和后台运行。
 
 ## 开发者
@@ -177,6 +187,7 @@ docs/       架构说明、引擎契约、设计 token、截图
 - [Node.js](https://nodejs.org)；安卓构建参考了 [Termux](https://github.com/termux/termux-packages) 和 [nodejs-mobile](https://github.com/nodejs-mobile/nodejs-mobile) 的做法
 - [Shizuku](https://github.com/RikkaApps/Shizuku)（Apache-2.0）：App 内置了官方安装包
 - [ripgrep](https://github.com/BurntSushi/ripgrep)
+- [Apache MINA SSHD](https://mina.apache.org/sshd-project/)（Apache-2.0）和 [EdDSA-Java](https://github.com/str4d/ed25519-java)（CC0）：远程模式的 SSH 客户端
 - [dsh-llm-service-lite](https://github.com/snnh/dsh-llm-service-lite)（MIT，snnh）：第三方模型适配器，原样内置于 `js/packages/llm-service-lite/`
 - [magpie](https://github.com/yetone/magpie)（MIT）：服务商预设地址和接入 dsh 的经验（按协议分组、maxTokens 与压缩阈值）
 

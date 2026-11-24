@@ -96,6 +96,13 @@ fun HomeScreen(vm: HomeViewModel, onSettings: (String?) -> Unit, onAutomation: (
                     onSettings = { section -> scope.launch { drawer.close() }; onSettings(section) },
                     onClose = { scope.launch { drawer.close() } },
                     onRename = vm::rename, onPin = vm::pin, onMute = vm::mute, onArchive = vm::archive, onDelete = vm::delete,
+                    workspace = {
+                        val ws by vm.workspace.collectAsStateWithLifecycle()
+                        val hosts by vm.hosts.collectAsStateWithLifecycle()
+                        val states by vm.remoteStates.collectAsStateWithLifecycle()
+                        WorkspaceSwitcher(ws, hosts, states, onSelect = { vm.setWorkspace(it) },
+                            onManage = { scope.launch { drawer.close() }; onSettings("Remote") })
+                    },
                 )
             }
         },
@@ -138,6 +145,9 @@ private fun ConversationPane(vm: HomeViewModel, onMenu: () -> Unit, onSettings: 
             IconBtn(R.drawable.dsw_panel_left_outline, onMenu, size = 40.dp, iconSize = 18.dp, tint = c.labelPrimary, contentDescription = stringResource(R.string.open_sidebar))
             Text(if (empty) "" else live.title.ifBlank { conv.turns.firstOrNull()?.user?.text?.lineSequence()?.firstOrNull() ?: stringResource(R.string.new_session) },
                 Modifier.weight(1f).padding(horizontal = 4.dp), style = DshType.s14m, color = c.labelPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // Remote mode (#51): which computer this conversation runs on, and its link.
+            val remote by vm.remote.collectAsStateWithLifecycle()
+            remote?.let { RemoteBadge(it, onDisconnect = { vm.disconnectRemote() }, onHostSettings = { onSettings("Remote") }) }
             // 对话 / 轨迹: one icon toggle instead of a segmented control, so the title keeps its room at 360 dp.
             if (!empty) {
                 val traj = view == SessionView.Trajectory
@@ -161,7 +171,8 @@ private fun ConversationPane(vm: HomeViewModel, onMenu: () -> Unit, onSettings: 
                     // One list state per session, so positions never leak across sessions.
                     else -> streams.SaveableStateProvider("chat/$sid") {
                         ChatStream(conv, live, settings.workDetails, rememberLazyListState(), onInspect = vm::inspect, onRetry = vm::retry, onContinue = { vm.continueTask() }, onOpenSettings = { onSettings(it) }, modifier = Modifier.fillMaxSize(),
-                            actions = actions, lineage = lineage, onOpenSession = vm::open)
+                            // A computer's stock dsh has no fork (android/session/fork, #51): no 编辑 / 重试 / 分叉 there.
+                            actions = actions.takeIf { live.hostId == null }, lineage = lineage, onOpenSession = vm::open)
                     }
                 }
             }
@@ -190,6 +201,11 @@ private fun EmptyHero(vm: HomeViewModel, composer: ComposerState, settings: Sett
             Text(stringResource(R.string.hero_title), style = DshType.xl24.copy(fontSize = DshType.xl24.fontSize * 1.08f, fontWeight = androidx.compose.ui.text.font.FontWeight(500)),
                 color = c.labelPrimary, textAlign = TextAlign.Center)
         }
+        // Remote mode (#51): the new conversation runs on this computer.
+        val remote by vm.remote.collectAsStateWithLifecycle()
+        remote?.host?.let { h ->
+            Text(stringResource(R.string.remote_hero, h.name), Modifier.padding(top = 8.dp), style = DshType.xs13, color = c.labelTertiary)
+        }
         Spacer(Modifier.height(28.dp))
         ComposerSlot(vm, composer, settings, live, conv, hero = true, onAutomation = onAutomation, onManageModes = { onSettings("Modes") })
     }
@@ -215,6 +231,7 @@ fun ComposerSlot(vm: ConversationController, composer: ComposerState, settings: 
     val context = androidx.compose.ui.platform.LocalContext.current
     val modelChangePending by vm.modelChangePending.collectAsStateWithLifecycle()
     val model by vm.model.collectAsStateWithLifecycle()
+    val remote by vm.remote.collectAsStateWithLifecycle()
     // 工作目录 (#76): a folder of the agent's workspace, picked in the system folder picker (the DSH root).
     val workingDirectory by vm.workingDirectory.collectAsStateWithLifecycle()
     val home = remember { io.github.jackwener.dsh.core.platform.Workspace.home(context) }
@@ -270,23 +287,26 @@ fun ComposerSlot(vm: ConversationController, composer: ComposerState, settings: 
                 onNewSession = if (conv.isEmpty) null else ({ vm.newSession() }),
                 onTrajectory = if (conv.isEmpty) null else ({ vm.view.value = SessionView.Trajectory }),
                 onAutomation = onAutomation,
-                onWorkingDirectory = {
+                // The folder picker browses this phone; a remote conversation starts in its host's directory (#51).
+                onWorkingDirectory = if (remote != null) null else ({
                     val ws = io.github.jackwener.dsh.core.platform.Workspace
                     val start = ws.docIdOf(home, java.io.File(workingDirectory ?: home.path))?.let { android.provider.DocumentsContract.buildDocumentUri(ws.authority(context), it) }
                     runCatching { pickFolder.launch(start ?: ws.rootDocumentUri(context)) }
                         .onFailure { android.widget.Toast.makeText(context, R.string.workspace_no_files_app, android.widget.Toast.LENGTH_LONG).show() }
-                },
-                workingDirectory = workingDirectory?.let { io.github.jackwener.dsh.core.platform.Workspace.displayPath(home.path, it) },
+                }),
+                workingDirectory = workingDirectory?.takeIf { remote == null }?.let { io.github.jackwener.dsh.core.platform.Workspace.displayPath(home.path, it) },
             ),
             showChips = showChips,
             canSendEmpty = canSendEmpty,
             modelChangePending = modelChangePending,
-            mode = settings.mode(live.modeId),
+            // A computer's dsh (#51) has no session modes (plugin-mode is the phone engine's).
+            mode = if (remote == null) settings.mode(live.modeId) else null,
             modes = settings.allModes,
             modeLocked = !live.modeChangeable,
             onMode = vm::setMode,
             onManageModes = onManageModes,
             voice = voice,
+            remoteLabel = remote?.label,
         )
     }
 }

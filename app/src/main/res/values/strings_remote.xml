@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Remote mode (#51): SSH to a computer and drive the dsh installed there. -->
+<resources>
+    <string name="set_remote">远程主机</string>
+    <string name="remote_intro">通过 SSH 连接你的电脑或服务器，使用那台机器上安装的 dsh（0.2.2 及以上）：对话、轨迹和审批照常在手机上进行，命令和文件操作都发生在电脑上。电脑需要开启 sshd，并能运行 dsh（Linux / macOS）。</string>
+    <string name="remote_scope_note">远程会话里没有手机能力（读屏、通知、短信、文件附件等）和会话模式；模型由电脑上的 dsh 提供，图片会随消息发送过去。断网或切换网络后会自动重连并续上任务。</string>
+    <string name="remote_workspace">工作区</string>
+    <string name="remote_this_phone">本机</string>
+    <string name="remote_this_phone_desc">在手机上运行，可操作手机</string>
+    <string name="remote_hosts">主机</string>
+    <string name="remote_add">添加远程主机</string>
+    <string name="remote_edit">远程主机</string>
+    <string name="remote_connect_computer">连接电脑…</string>
+    <string name="remote_manage">管理远程主机…</string>
+    <string name="remote_state_connected">已连接</string>
+    <string name="remote_state_connecting">正在连接…</string>
+    <string name="remote_state_lost">连接已断开</string>
+    <string name="remote_state_failed">连接失败</string>
+    <string name="remote_connected_notif">已连接电脑：%1$s</string>
+    <string name="remote_badge">远程 · %1$s</string>
+    <string name="remote_disconnect">断开连接</string>
+    <string name="remote_disconnect_desc">结束电脑上的 dsh；下次发送时自动重连</string>
+    <string name="remote_host_settings">远程主机设置</string>
+    <string name="remote_hero">在 %1$s 上运行</string>
+
+    <string name="remote_name">名称</string>
+    <string name="remote_name_hint">家里的电脑</string>
+    <string name="remote_host">主机地址</string>
+    <string name="remote_host_desc">IPv4、IPv6 或域名，例如 192.168.1.10、home.example.com</string>
+    <string name="remote_port">端口</string>
+    <string name="remote_user">用户名</string>
+    <string name="remote_auth">认证方式</string>
+    <string name="remote_auth_password">密码</string>
+    <string name="remote_auth_key">私钥</string>
+    <string name="remote_password">密码</string>
+    <string name="remote_key">私钥</string>
+    <string name="remote_key_desc">粘贴 OpenSSH 或 PEM 格式的私钥（ed25519、ECDSA、RSA），或从文件导入</string>
+    <string name="remote_key_file">从文件导入</string>
+    <string name="remote_passphrase">私钥密码</string>
+    <string name="remote_passphrase_desc">私钥没有加密就留空</string>
+    <string name="remote_secret_stored">已保存（留空则不修改）</string>
+    <string name="remote_dsh_group">电脑上的 dsh</string>
+    <string name="remote_workdir">工作目录</string>
+    <string name="remote_workdir_desc">新会话从这里开始；留空为用户主目录，支持 ~/</string>
+    <string name="remote_command">dsh 命令</string>
+    <string name="remote_command_desc">找不到时填完整路径（在电脑上运行 which dsh 查看），也可以是 npx -y @deepseek-ai/dsh</string>
+    <string name="remote_model">模型</string>
+    <string name="remote_model_desc">电脑上 dsh 可用的模型服务和模型 id，例如 deepseek-official / deepseek-flash</string>
+    <string name="remote_share_key">使用本机的 DeepSeek API key</string>
+    <string name="remote_share_key_desc">通过 SSH 通道交给电脑上的 dsh（不写入电脑磁盘，也不出现在命令行里）；关闭则使用电脑自己的配置</string>
+    <string name="remote_env">环境变量</string>
+    <string name="remote_env_desc">每行一个 KEY=value，传给电脑上的 dsh</string>
+    <string name="remote_hostkey">主机指纹</string>
+    <string name="remote_hostkey_none">尚未确认</string>
+    <string name="remote_hostkey_desc">之后每次连接都会核对；变化时会明确警告并拒绝连接</string>
+    <string name="remote_hostkey_none_desc">首次「测试连接」时会显示电脑的 SHA256 指纹，确认后才会连接</string>
+    <string name="remote_test">测试连接</string>
+    <string name="remote_testing">正在连接并启动 dsh…</string>
+    <string name="remote_test_ok">连接成功，dsh 已在 %1$s 启动</string>
+    <string name="remote_invalid_host">请填写有效的主机地址</string>
+    <string name="remote_invalid_port">端口应为 1–65535</string>
+    <string name="remote_invalid_user">请填写用户名</string>
+    <string name="remote_need_password">请填写密码</string>
+    <string name="remote_need_key">请粘贴或导入私钥</string>
+    <string name="remote_invalid_env">环境变量格式应为每行一个 KEY=value</string>
+
+    <string name="remote_trust_title">首次连接：确认主机指纹</string>
+    <string name="remote_trust_body">%1$s 的主机密钥指纹是：</string>
+    <string name="remote_trust_check">可以在电脑上运行 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub 核对。指纹一致再信任；之后每次连接都会核对。</string>
+    <string name="remote_trust">信任并连接</string>
+    <string name="remote_changed_title">⚠ 主机指纹已变化</string>
+    <string name="remote_changed_body">%1$s 的主机密钥和上次信任的不一样。\n\n之前：%2$s\n现在：%3$s\n\n可能有人在冒充这台电脑（中间人攻击），密码和对话内容会被截获。只有在你确认电脑重装了系统或重新生成了 SSH 主机密钥，并在电脑上核对过新指纹时，才信任新指纹。</string>
+    <string name="remote_changed_check">我已在电脑上核对新指纹</string>
+    <string name="remote_changed_trust">信任新指纹</string>
+    <string name="remote_delete_title">删除远程主机？</string>
+    <string name="remote_delete_body">会删除这台主机的连接信息和保存的密码 / 私钥，以及它在手机上的会话记录。电脑上 dsh 自己的会话不受影响。</string>
+
+    <string name="remote_error_title">无法使用远程电脑</string>
+    <string name="remote_open_settings">远程主机设置</string>
+    <string name="remote_recovering">与电脑的连接断开了，正在重连并继续任务…</string>
+    <string name="err_remote_lost">与电脑的连接断开了，本轮已中断。</string>
+    <string name="remote_err_offline">手机没有网络连接。</string>
+    <string name="remote_err_dns">无法解析主机地址：请检查域名是否正确，或改用 IP 地址。</string>
+    <string name="remote_err_timeout">连接超时：电脑不在线、地址不对，或者网络之间不通（不在同一局域网时需要公网地址、端口转发或 Tailscale 等）。</string>
+    <string name="remote_err_refused">连接被拒绝：电脑上的 sshd 没有运行，或端口不对。</string>
+    <string name="remote_err_unreachable">网络不可达：手机和电脑之间没有路由。</string>
+    <string name="remote_err_hostkey_unknown">还没有确认这台电脑的主机指纹：请到 设置 → 远程主机，打开这台主机点「测试连接」并核对指纹。</string>
+    <string name="remote_err_hostkey_changed">⚠ 电脑的主机指纹变了（现在是 %1$s），已拒绝连接：可能有人在冒充这台电脑。确认是你重装或换了密钥后，到 设置 → 远程主机 重新核对并信任。</string>
+    <string name="remote_err_auth">认证失败：用户名、密码不对，或电脑不接受这把私钥（检查 ~/.ssh/authorized_keys）。</string>
+    <string name="remote_err_key_invalid">无法读取私钥（%1$s）：支持 OpenSSH 或 PEM 格式。</string>
+    <string name="remote_err_key_passphrase">私钥密码不对，或私钥已加密但没有填写密码。</string>
+    <string name="remote_err_workdir">电脑上进不去工作目录：%1$s</string>
+    <string name="remote_err_no_dsh">电脑上找不到 dsh（%1$s）。请先在电脑上安装 dsh（npm i -g @deepseek-ai/dsh），或在主机设置里填写 dsh 命令的完整路径。</string>
+    <string name="remote_err_dsh_exited">电脑上的 dsh 启动失败：%1$s</string>
+    <string name="remote_err_initialize">电脑上的 dsh 拒绝了模型设置：%1$s。请检查主机设置里的模型，或电脑上 dsh 的模型服务配置。</string>
+    <string name="remote_err_host_missing">这台远程主机已被删除。</string>
+    <string name="remote_fork_unsupported">电脑上的 dsh 不支持分叉</string>
+    <string name="remote_err_other">远程连接出错：%1$s</string>
+</resources>

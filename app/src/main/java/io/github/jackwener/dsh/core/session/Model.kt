@@ -110,6 +110,8 @@ data class SessionLive(
     /** The conversation's own model (#53) from the row (or picked for a new conversation); null = the settings default. */
     val model: SessionModel? = null,
     val exists: Boolean = false,
+    /** Remote mode (#51): the host whose dsh runs this conversation (row value, or the workspace of a new one); null = this phone. */
+    val hostId: String? = null,
 ) {
     /** The mode can be picked only before the conversation's first message (see [modeChangeable]). */
     val modeChangeable: Boolean get() = io.github.jackwener.dsh.core.model.modeChangeable(exists, running, events.any { it.seq >= 0 })

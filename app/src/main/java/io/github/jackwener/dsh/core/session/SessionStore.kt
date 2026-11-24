@@ -21,6 +21,11 @@ import io.github.jackwener.dsh.core.engine.EngineStartException
 import io.github.jackwener.dsh.core.engine.JsonRpcException
 import io.github.jackwener.dsh.core.engine.NoCredentialsException
 import io.github.jackwener.dsh.core.engine.RpcJson
+import io.github.jackwener.dsh.core.engine.SdkEngine
+import io.github.jackwener.dsh.core.remote.RemoteEngine
+import io.github.jackwener.dsh.core.remote.RemoteEngines
+import io.github.jackwener.dsh.core.remote.RemoteErrors
+import io.github.jackwener.dsh.core.remote.RemoteException
 import io.github.jackwener.dsh.core.model.PermissionPreset
 import io.github.jackwener.dsh.core.model.Risk
 import io.github.jackwener.dsh.core.model.RuleSpec
@@ -94,6 +99,8 @@ class SessionStore @Inject constructor(
     private val wakeLock: TurnWakeLock,
     /** `android.ext.*` notifications (plugin progress / changes / notices) go to 设置 → 扩展. */
     private val extensions: dagger.Lazy<io.github.jackwener.dsh.core.extensions.ExtensionsRepository>,
+    /** Remote mode (#51): conversations of a host run on that computer's dsh, everything else on [engine]. */
+    private val remotes: RemoteEngines,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> android.util.Log.e(TAG, "session task crashed", e) })
     private val states = ConcurrentHashMap<String, MutableStateFlow<SessionLive>>()
@@ -179,7 +186,7 @@ class SessionStore @Inject constructor(
         val preset = entity?.preset?.let { PermissionPreset.of(it) } ?: settings.current().defaultPreset
         android.util.Log.i(TAG, "session $sessionId loaded: preset ${preset.id} (${if (entity?.preset != null) "session row" else "settings default"})")
         MutableStateFlow(SessionLive(sessionId, entity?.title ?: "", events, running = false, preset = preset, modeId = entity?.modeId,
-            model = SessionModels.of(entity), exists = entity != null))
+            model = SessionModels.of(entity), exists = entity != null, hostId = entity?.hostId))
             .also { states[sessionId] = it }
     }
 
@@ -202,12 +209,28 @@ class SessionStore @Inject constructor(
 
     fun hasRunning() = states.values.any { it.value.running }
 
+    /** Whether a conversation of [hostId] (null = this phone) runs. */
+    fun hasRunning(hostId: String?) = states.values.any { it.value.running && it.value.hostId == hostId }
+
+    /** The runtime of [hostId]'s conversations: this phone's engine (null) or that computer's dsh (#51). */
+    private fun engineOf(hostId: String?): SdkEngine = hostId?.let(remotes::engine) ?: engine
+
+    private val SdkEngine.hostId: String? get() = (this as? RemoteEngine)?.hostId
+
+    /**
+     * Where a new conversation runs (the home screen's workspace, #51): [hostId]'s dsh, or this phone (null).
+     * Fixed once its row exists: its history lives in that runtime.
+     */
+    suspend fun setHost(sessionId: String, hostId: String?) {
+        if (dao.get(sessionId) == null) mutate(sessionId) { if (it.exists) it else it.copy(hostId = hostId) }
+    }
+
     /**
      * Runs the engine is executing now. A fresh prompt still waiting for the engine to start is not
      * one, but a running session that is steered (sent to again mid-turn) is: [prompt] leaves its
      * startingEngine unset, so a route change never restarts the engine under it.
      */
-    fun hasEngineRuns() = states.values.any { it.value.running && !it.value.startingEngine }
+    fun hasEngineRuns() = states.values.any { it.value.running && !it.value.startingEngine && it.value.hostId == null }
 
     fun newSessionId(): String = UUID.randomUUID().toString()
 
@@ -269,7 +292,9 @@ class SessionStore @Inject constructor(
     }
 
     /** A turn runs in the engine now (not one waiting for the engine to start or for the network). */
-    private val SessionLive.steerable get() = running && !startingEngine && !waitingForNetwork
+    private val SessionLive.steerable get() = running && !startingEngine && !waitingForNetwork &&
+        // A computer's stock dsh has no steer mode (js patch 21): there a message waits for the turn (#51).
+        hostId == null
 
     /**
      * Sends [text] into the running turn (`session/prompt` `mode: 'steer'`, ENGINE-CONTRACT §2): dsh
@@ -325,33 +350,38 @@ class SessionStore @Inject constructor(
         if (existing?.parentId == null) ownedRoots += sessionId
         // A conversation the user starts keeps its own model from now on (#53): the one picked in the
         // composer, else a copy of the default. Automation runs keep following the default.
-        val ownModel = live.model ?: settings.current().takeIf { existing == null && ruleId == null && ruleIdOfSession(sessionId) == null }?.let(SessionModels::default)
+        val ownModel = live.model ?: settings.current().takeIf { existing == null && ruleId == null && ruleIdOfSession(sessionId) == null && live.hostId == null }?.let(SessionModels::default)
         if (existing == null) dao.upsert(SessionEntity(sessionId, text.lineSequence().first().take(40), now, now, ruleId, running = true, preset = live.preset.id, modeId = live.modeId,
-            modelProvider = ownModel?.provider, modelId = ownModel?.model, modelEffort = ownModel?.effort))
+            modelProvider = ownModel?.provider, modelId = ownModel?.model, modelEffort = ownModel?.effort, hostId = live.hostId))
         else dao.setRunning(sessionId, true)
         // Steering a running session keeps it an engine run (no startingEngine): see hasEngineRuns.
         mutate(sessionId) { it.copy(running = true, exists = true, runStartedAt = it.runStartedAt.takeIf { _ -> live.running } ?: now,
             startingEngine = it.startingEngine || !live.running, waitingForNetwork = false, model = it.model ?: ownModel) }
-        engine.cancelIdleShutdown()
-        if (ruleIdOfSession(sessionId) != null && engine.restarts.open && engine.state.value != EngineState.Ready) {
+        val target = engineOf(live.hostId)
+        target.cancelIdleShutdown()
+        if (live.hostId == null && ruleIdOfSession(sessionId) != null && engine.restarts.open && engine.state.value != EngineState.Ready) {
             // Circuit breaker open: automations do not restart a crash-looping engine (Doctor shows why).
             fail(sessionId, "engine", context.getString(R.string.err_engine_crash_loop), null, retryText)
             return
         }
         try {
-            val model = runModel(sessionId)
-            val sdk = engine.sdk(engine.sessionRoute(model))
+            // A computer's dsh (#51) runs on the host's own model route and has none of the Android extensions.
+            val model = if (target.androidExtensions) runModel(sessionId) else null
+            val sdk = if (target is RemoteEngine) target.sdk() else engine.sdk(engine.sessionRoute(model!!))
             mutate(sessionId) { it.copy(startingEngine = false) }
-            engine.markSessionOpened()
-            val gen = engine.generation
+            target.markSessionOpened()
+            val gen = target.generation
             if (resumedIn[sessionId] != gen && (live.events.none { it.seq >= 0 } || resume(sdk, sessionId))) resumedIn[sessionId] = gen
             // The guard needs the conversation's permission mode (ENGINE-CONTRACT: android/session/permission),
             // plugin-mode its session mode (android/session/mode); both are re-sent before every prompt,
             // also after a resume (a new engine generation knows neither).
-            sendPreset(sdk, sessionId, flowOf(sessionId).value.preset)
-            sendMode(sdk, sessionId, flowOf(sessionId).value.modeId)
-            // Its level is checked against what this engine reported (refreshed at start).
-            sendModel(sdk, sessionId, engine.sessionRoute(model))
+            if (model != null) {
+                sendPreset(sdk, sessionId, flowOf(sessionId).value.preset)
+                sendMode(sdk, sessionId, flowOf(sessionId).value.modeId)
+                // Its level is checked against what this engine reported (refreshed at start).
+                sendModel(sdk, sessionId, engine.sessionRoute(model))
+            }
+            // Stock dsh's session/working-directory/set (a remote conversation never has one pending: no phone folder there, #51).
             sendPendingWorkingDirectory(sdk, sessionId)
             val request = buildJsonObject {
                 put("sessionId", sessionId)
@@ -371,12 +401,16 @@ class SessionStore @Inject constructor(
                 android.util.Log.w(TAG, "session $sessionId exists in the engine but was not open: resuming it (${e.message})")
                 if (!resume(sdk, sessionId)) throw e
                 resumedIn[sessionId] = gen
-                sendPreset(sdk, sessionId, flowOf(sessionId).value.preset)
-                sendMode(sdk, sessionId, flowOf(sessionId).value.modeId)
-                sendModel(sdk, sessionId, engine.sessionRoute(model))
+                if (model != null) {
+                    sendPreset(sdk, sessionId, flowOf(sessionId).value.preset)
+                    sendMode(sdk, sessionId, flowOf(sessionId).value.modeId)
+                    sendModel(sdk, sessionId, engine.sessionRoute(model))
+                }
                 sendPendingWorkingDirectory(sdk, sessionId)
                 sdk.request("session/prompt", request)
             }
+        } catch (e: RemoteException) {
+            fail(sessionId, RemoteErrors.KIND, RemoteErrors.message(context, e), e.kind.name, retryText)
         } catch (e: NoCredentialsException) {
             fail(sessionId, "no_credentials", e.message ?: "", null, retryText)
         } catch (e: SessionModelRefused) {
@@ -392,7 +426,9 @@ class SessionStore @Inject constructor(
         } catch (e: EngineStartException) {
             fail(sessionId, "engine", e.message ?: "", e.log, retryText)
         } catch (e: JsonRpcException) {
-            fail(sessionId, "engine", e.message ?: "", e.code.toString(), retryText)
+            // A computer's dsh refused the request or its link closed meanwhile: not the phone's engine.
+            if (target is RemoteEngine) fail(sessionId, RemoteErrors.KIND, e.message ?: "", e.code.toString(), retryText)
+            else fail(sessionId, "engine", e.message ?: "", e.code.toString(), retryText)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -436,7 +472,7 @@ class SessionStore @Inject constructor(
         autoContinued.remove(sessionId)
         mutate(sessionId) { it.copy(running = true, startingEngine = true, runStartedAt = System.currentTimeMillis()) }
         val othersRunning = states.values.any { it.value.running && it.value.sessionId != sessionId }
-        if (error.kind == "engine" && engine.state.value == EngineState.Ready && !othersRunning) {
+        if (error.kind == "engine" && flowOf(sessionId).value.hostId == null && engine.state.value == EngineState.Ready && !othersRunning) {
             stopping = true
             try { engine.stop() } finally { stopping = false }
             // The user tapped Stop while the engine restarted.
@@ -466,7 +502,8 @@ class SessionStore @Inject constructor(
             retryText?.let { put("retryText", it) }
         })
         mutate(sessionId) { it.idle() }
-        if (!hasRunning()) engine.scheduleIdleShutdown()
+        val hostId = flowOf(sessionId).value.hostId
+        if (!hasRunning(hostId)) engineOf(hostId).scheduleIdleShutdown()
     }
 
     private suspend fun appendLocal(sessionId: String, type: String, data: JsonObject) {
@@ -488,6 +525,12 @@ class SessionStore @Inject constructor(
     /** Stops every run (the SDK has no per-session cancel, so this stops the engine process). */
     suspend fun stop() = stopEngine()
 
+    /** Stop in [sessionId]'s conversation: every run of its runtime (this phone's engine, or its computer's dsh, #51). */
+    suspend fun stop(sessionId: String) {
+        val hostId = flowOf(sessionId).value.hostId
+        if (hostId == null) stopEngine() else stopRuntime(remotes.engine(hostId))
+    }
+
     /**
      * Restarts the engine (Doctor, an API key change). Same as [stop] for the runs it kills: they
      * end as stopped, with their cards and queues cleared; the next prompt starts the new engine.
@@ -496,11 +539,13 @@ class SessionStore @Inject constructor(
      */
     suspend fun restartEngine() = stopEngine()
 
-    private suspend fun stopEngine() {
-        val running = states.values.map { it.value }.filter { it.running }.map { it.sessionId }.toSet()
+    private suspend fun stopEngine() = stopRuntime(engine)
+
+    private suspend fun stopRuntime(target: SdkEngine) {
+        val running = states.values.map { it.value }.filter { it.running && it.hostId == target.hostId }.map { it.sessionId }.toSet()
         stopping = true
-        try { engine.stop() } finally { stopping = false }
-        cancelPending()
+        try { target.stop() } finally { stopping = false }
+        cancelPending(target.hostId)
         running.forEach { id ->
             dao.setRunning(id, false)
             autoContinued.remove(id)
@@ -513,13 +558,17 @@ class SessionStore @Inject constructor(
      * The engine generation ended: answer every pending card (their handler coroutines were
      * cancelled by the teardown already, see EngineCalls) and clear what any session still shows.
      */
-    private suspend fun cancelPending() {
-        approvals.values.forEach { it.complete(ApprovalOutcome.Reject) }
-        questions.values.forEach { it.completeExceptionally(JsonRpcException(-32000, "cancelled")) }
-        permissions.values.forEach { it.complete(false) }
-        takeovers.values.forEach { it.complete(TakeoverAnswer.Abort) }
-        states.values.filter { it.value.hasPendingRequest || it.value.waitingForUnlock }.forEach { f ->
-            mutate(f.value.sessionId) { it.withoutAnyPending().copy(waitingForUnlock = false) }
+    private suspend fun cancelPending(hostId: String?) {
+        // Only the cards of that runtime's conversations (#51: another runtime's runs go on).
+        val own = states.values.map { it.value }.filter { it.hostId == hostId }
+        own.forEach { s ->
+            s.approvals.forEach { approvals[it.requestKey]?.complete(ApprovalOutcome.Reject) }
+            s.questions.forEach { questions[it.requestKey]?.completeExceptionally(JsonRpcException(-32000, "cancelled")) }
+            s.permissions.forEach { permissions[it.requestKey]?.complete(false) }
+            s.takeovers.forEach { takeovers[it.requestKey]?.complete(TakeoverAnswer.Abort) }
+        }
+        own.filter { it.hasPendingRequest || it.waitingForUnlock }.forEach { s ->
+            mutate(s.sessionId) { it.withoutAnyPending().copy(waitingForUnlock = false) }
         }
     }
 
@@ -535,7 +584,7 @@ class SessionStore @Inject constructor(
     suspend fun renameByUser(sessionId: String, title: String) {
         appendLocal(sessionId, USER_TITLE, buildJsonObject { put("title", title) })
         rename(sessionId, title)
-        engine.sdkIfReady()?.let { sdk ->
+        if (flowOf(sessionId).value.hostId == null) engine.sdkIfReady()?.let { sdk ->
             runCatching { sdk.request("android/session/title", buildJsonObject { put("sessionId", sessionId); put("title", title) }) }
                 .onFailure { android.util.Log.i(TAG, "android/session/title: ${it.message}") }
         }
@@ -558,7 +607,8 @@ class SessionStore @Inject constructor(
         android.util.Log.i(TAG, "session $sessionId preset -> ${preset.id}", Throwable("setPreset caller"))
         if (dao.get(sessionId) != null) dao.setPreset(sessionId, preset.id)
         mutate(sessionId) { it.copy(preset = preset) }
-        engine.sdkIfReady()?.let { sendPreset(it, sessionId, preset) }
+        // A remote conversation's mode is applied here, in [approve] (#51).
+        if (flowOf(sessionId).value.hostId == null) engine.sdkIfReady()?.let { sendPreset(it, sessionId, preset) }
     }
 
     /**
@@ -655,7 +705,7 @@ class SessionStore @Inject constructor(
         mutate(sessionId) { it.copy(model = m) }
         val live = flowOf(sessionId).value
         val sdk = engine.sdkIfReady()
-        if (sdk != null && live.running && !live.startingEngine && resumedIn[sessionId] == engine.generation &&
+        if (sdk != null && live.hostId == null && live.running && !live.startingEngine && resumedIn[sessionId] == engine.generation &&
             SessionModels.available(m, settings.current())) {
             runCatching { sendModel(sdk, sessionId, engine.sessionRoute(m)) }.onFailure { android.util.Log.w(TAG, "model switch of running $sessionId refused", it) }
         }
@@ -694,6 +744,11 @@ class SessionStore @Inject constructor(
         resumedIn.remove(sessionId); logSeqs.forget(sessionId)
         PanelSession.forget(context, sessionId)
         _deleted.emit(sessionId)
+    }
+
+    /** A remote host entry was deleted (#51): its conversations go from this phone (the computer keeps its own logs). */
+    suspend fun deleteHostConversations(hostId: String) {
+        dao.idsOfHost(hostId).forEach { id -> if (dao.get(id)?.parentId == null) delete(id) }
     }
 
     // ---- edit / retry / fork (#2) ----------------------------------------------------------------
@@ -737,6 +792,8 @@ class SessionStore @Inject constructor(
     private suspend fun branch(sessionId: String, beforeMessageId: String?, kind: ForkKind, show: (String) -> Unit): String? {
         val source = flowOf(sessionId).value
         if (source.running) { toast(context.getString(R.string.fork_busy)); return null }
+        // android/session/fork is plugin-guard's: a computer's stock dsh cannot fork (#51; the UI offers none there).
+        if (source.hostId != null) { toast(context.getString(R.string.fork_failed, context.getString(R.string.remote_fork_unsupported))); return null }
         val row = dao.get(sessionId)
         val cut = Forks.cut(source.events, beforeMessageId)
         if (row == null || cut == null) { toast(context.getString(R.string.fork_failed, "message not found")); return null }
@@ -816,14 +873,15 @@ class SessionStore @Inject constructor(
             if (mapped != seq) android.util.Log.i(TAG, "session $sessionId gen $gen: engine seq $seq was already logged; logging from $mapped")
         }
 
-    suspend fun onNotification(method: String, params: JsonObject, gen: Int) {
+    /** A notification of [source]'s generation [gen] (the embedded engine, or a computer's dsh, #51). */
+    suspend fun onNotification(method: String, params: JsonObject, gen: Int, source: SdkEngine = engine) {
         if (method.startsWith("android.ext.")) { extensions.get().onNotification(method, params); return }
         if (method == "subagent.started") {
             val parent = params.s("parentSessionId") ?: return
             val child = params.s("childSessionId") ?: return
             if (dao.get(child) == null) {
                 val now = System.currentTimeMillis()
-                dao.upsert(SessionEntity(child, "", now, now, ruleIdOfSession(parent), parentId = parent))
+                dao.upsert(SessionEntity(child, "", now, now, ruleIdOfSession(parent), parentId = parent, hostId = source.hostId))
             }
             return
         }
@@ -842,7 +900,7 @@ class SessionStore @Inject constructor(
                     if (op == null || (op is JsonPrimitive && op.contentOrNull == "append")) d else JsonObject(d + (SURFACE_OP_KEY to op))
                 }
                 if (dao.get(sessionId) != null) dao.insertEvent(EventEntity(sessionId, seq, type, data.toString(), time))
-                else noteBackgroundSession(sessionId)
+                else if (source.androidExtensions) noteBackgroundSession(sessionId)
                 val logged = LoggedEvent(seq, type, time, data)
                 mutate(sessionId) { s -> if (s.events.any { it.seq == seq }) s else s.copy(events = s.events + logged).withLogged(logged) }
                 if (type == "session/title") data.s("title")?.let { onEngineTitle(sessionId, it) }
@@ -850,7 +908,7 @@ class SessionStore @Inject constructor(
             }
             "session.status" -> {
                 // A torn-down generation's status (its tail drained after the loss) is not this run's.
-                if (gen <= engine.retiredGeneration) return
+                if (gen <= source.retiredGeneration) return
                 val running = params.s("status") == "running"
                 // A repeated idle while the session waits for the network must not end (or re-arm) the wait.
                 if (!running && flowOf(sessionId).value.waitingForNetwork) return
@@ -1092,7 +1150,7 @@ class SessionStore @Inject constructor(
             scope.launch { prompt(sessionId, next.text) }
             return
         }
-        if (states.values.none { it.value.running }) engine.scheduleIdleShutdown()
+        if (!hasRunning(live.hostId)) engineOf(live.hostId).scheduleIdleShutdown()
         // Only the user's own conversations (#43): a plugin's background session has no row, a subagent has a parent.
         val row = dao.get(sessionId) ?: return
         if (!SessionVisibility.userFacing(sessionId, row)) return
@@ -1116,6 +1174,8 @@ class SessionStore @Inject constructor(
         val end = flow.value.events.lastOrNull { it.type == "turn/start" || it.type == "turn/end" }?.takeIf { it.type == "turn/end" } ?: return false
         val reason = end.data.o("reason")
         if (reason?.s("kind") != "error" || reason.o("error")?.s("code") !in NETWORK_CODES) return false
+        // A computer's dsh (#51) has its own network: the phone being offline says nothing about its errors.
+        if (flow.value.hostId != null) return false
         if (dao.get(sessionId)?.parentId != null || Connectivity.online(context) || !autoContinued.add(sessionId)) return false
         android.util.Log.w(TAG, "session $sessionId: turn failed offline; continuing when the network is back")
         // Marked running like a live turn, so an app restart meanwhile shows it as interrupted (继续).
@@ -1140,13 +1200,17 @@ class SessionStore @Inject constructor(
      * gets one automatic continuation per turn; a second loss in the same turn, or an open circuit
      * breaker ([retryInMs] == null), leaves the visible engine_lost error with its 继续 button.
      */
-    suspend fun onEngineLost(gen: Int, retryInMs: Long?) {
+    suspend fun onEngineLost(gen: Int, retryInMs: Long?, source: SdkEngine = engine) {
         if (stopping) return
-        android.util.Log.w(TAG, "engine gen $gen lost; retry in $retryInMs ms")
-        cancelPending()
+        val hostId = source.hostId
+        val remote = hostId != null
+        android.util.Log.w(TAG, "${if (remote) "remote $hostId" else "engine"} gen $gen lost; retry in $retryInMs ms")
+        cancelPending(hostId)
         // A session waiting for the network has no turn in the engine; its continuation starts a new one.
         val waiting = states.values.map { it.value }.filter { it.waitingForNetwork }.map { it.sessionId }.toSet()
-        val running = states.values.map { it.value }.filter { it.running }.map { it.sessionId }.toSet() + dao.running().map { it.id } - waiting
+        // Only the lost runtime's conversations (#51).
+        val running = states.values.map { it.value }.filter { it.running && it.hostId == hostId }.map { it.sessionId }.toSet() +
+            dao.running().filter { it.hostId == hostId }.map { it.id } - waiting
         val roots = mutableListOf<String>()
         running.forEach { id ->
             dao.setRunning(id, false)
@@ -1158,12 +1222,19 @@ class SessionStore @Inject constructor(
                 // Continues the same task: its queue stays and is sent after the continuation, as usual;
                 // steers the lost engine never ran join it (the resumed engine drops them).
                 mutate(id) { it.steersQueued().copy(running = true, startingEngine = true, runStartedAt = System.currentTimeMillis(), waitingForUnlock = false) }
-                appendLocal(id, "app/notice", buildJsonObject { put("kind", ENGINE_RECOVERING); put("text", context.getString(R.string.engine_recovering)) })
+                appendLocal(id, "app/notice", buildJsonObject {
+                    put("kind", ENGINE_RECOVERING); put("text", context.getString(if (remote) R.string.remote_recovering else R.string.engine_recovering))
+                })
             } else {
                 mutate(id) { it.idle() }
                 appendLocal(id, "app/error", buildJsonObject {
-                    put("kind", "engine_lost")
-                    put("message", context.getString(if (retryInMs == null) R.string.err_engine_crash_loop else R.string.err_engine_lost))
+                    if (remote) {
+                        put("kind", RemoteErrors.KIND); put("code", RemoteException.Kind.Disconnected.name)
+                        put("message", context.getString(R.string.err_remote_lost))
+                    } else {
+                        put("kind", "engine_lost")
+                        put("message", context.getString(if (retryInMs == null) R.string.err_engine_crash_loop else R.string.err_engine_lost))
+                    }
                 })
             }
         }
@@ -1173,7 +1244,7 @@ class SessionStore @Inject constructor(
         scope.launch {
             delay(retryInMs)
             // Skip sessions the user stopped during the backoff.
-            resume.filter { flowOf(it).value.running }.forEach { id -> scope.launch { prompt(id, CONTINUE_AFTER_CRASH, ruleIdOfSession(id)) } }
+            resume.filter { flowOf(it).value.running }.forEach { id -> scope.launch { prompt(id, if (remote) CONTINUE_AFTER_DISCONNECT else CONTINUE_AFTER_CRASH, ruleIdOfSession(id)) } }
         }
     }
 
@@ -1196,6 +1267,12 @@ class SessionStore @Inject constructor(
             "interrupted. Every tool call above that has a successful result already took effect: do NOT call any tool to repeat or " +
             "re-apply it, even if the device state now looks different (the user may have changed it since). A call without a result " +
             "may not have run; check before redoing only that one. Then continue the remaining steps; if nothing is left, just give the final reply."
+
+        /** Model-facing continuation after the link to a computer's dsh dropped (#51; that dsh ended with it, session/resume closed the calls). */
+        const val CONTINUE_AFTER_DISCONNECT = APP_PROMPT_PREFIX + "The connection between the user's phone and this computer dropped, which " +
+            "ended the agent process, so your previous turn was interrupted. Every tool call above that has a successful result already " +
+            "took effect: do NOT repeat or re-apply it. A call without a result may not have run; check before redoing only that one. Then " +
+            "continue the remaining steps; if nothing is left, just give the final reply."
 
         /** Model-facing continuation once the phone is back online after a turn failed offline ([waitForNetwork]). */
         const val CONTINUE_AFTER_NETWORK = APP_PROMPT_PREFIX + "The network dropped and your previous reply could not be sent, so your " +

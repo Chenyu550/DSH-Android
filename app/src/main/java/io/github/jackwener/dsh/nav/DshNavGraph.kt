@@ -73,6 +73,7 @@ fun NavGraphBuilder.dshGraph(nav: NavHostController, home: () -> HomeViewModel) 
         composable<ModeRoute> { e ->
             InSettings(nav, e) { ModeScreen(e.toRoute(), onBack = { nav.up(e) }, onReplace = { nav.replaceMode(it) }) }
         }
+        composable<RemoteHostRoute> { e -> InSettings(nav, e) { io.github.jackwener.dsh.feature.settings.RemoteHostScreen(e.toRoute<RemoteHostRoute>().id, onBack = { nav.up(e) }) } }
         composable<PluginRoute> { e -> ExtensionsPage(nav, e, e.toRoute<PluginRoute>()) }
         composable<MarketEntryRoute> { e -> ExtensionsPage(nav, e, e.toRoute<MarketEntryRoute>()) }
         composable<IndexesRoute> { e -> ExtensionsPage(nav, e, IndexesRoute) }

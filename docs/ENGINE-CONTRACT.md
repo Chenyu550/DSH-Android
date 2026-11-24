@@ -1,6 +1,6 @@
 # Engine ↔ App contract
 
-The Android app (Kotlin) and the embedded dsh engine (Node 24 in process `:engine`) talk over exactly two channels. This file is the single source of truth for both sides.
+The Android app (Kotlin) and the embedded dsh engine (Node 24 in process `:engine`) talk over exactly two channels. This file is the single source of truth for both sides. §5 covers the second runtime the app can drive: a computer's own dsh over SSH (remote mode).
 
 ## 1. Launch
 
@@ -541,3 +541,76 @@ later, or send an SMS twice after a retry). The rules:
   `/system/bin/sh`; DeepSeek web search on, through DeepSeek Messages search on every route (`web.searchProvider:
   deepseek-official`; dsh 0.2.2's default for non-DeepSeek routes is the per-search-billed DeepSeek Search API).
 - `patches/`: platform `android` support (flock loader → `DSH_NATIVE_DIR`, require-builtin → `--expose-internals`), `bash -c` → `/system/bin/sh -c`, attachment hard-link → copy fallback, ripgrep path → `PATH`, android profile template, sharp wasm, SDK extension methods, SDK prompt time zone, SDK prompt steer, tool/command owners, plugin-market fetch hook; sandbox chain: none on android (approval-only). node-pty is not patched (no terminal row is mounted; `libdsh_pty.so` is unused).
+
+## 5. Remote mode: a computer's dsh over SSH (#51)
+
+The app can drive the stock dsh (≥ 0.2.2) installed on a computer instead of the embedded engine. It is the same
+SDK channel (§2) with the same client (`JsonRpcPeer`) over a different byte stream: the stdin/stdout of one SSH exec
+channel running `dsh --profile sdk` (dsh-base + dsh-sdk-app; stdout belongs to JSON-RPC, the process exits when its
+stdin ends). Code: `core/remote/`; `core/engine/SdkEngine` is the interface both runtimes implement.
+
+**Connection** (`SshConnection`, Apache MINA SSHD 2.20): host / port / user from the host entry, password or private
+key (OpenSSH / PEM; Ed25519 through `net.i2p.crypto:eddsa`, ECDSA, RSA) + passphrase from `SecretStore`. Host keys are
+trust-on-first-use: the entry stores the trusted key as an OpenSSH public key line and its SHA-256 fingerprint
+(`SHA256:…`, as `ssh-keygen -lf` prints it); an unknown or different key aborts the handshake before authentication
+(`HostKeyUnknown` / `HostKeyChanged`, carrying the presented key) and only 设置 → 远程主机 → 测试连接 can trust one (a
+change behind a loud warning with a confirmation checkbox). Keepalive: `keepalive@openssh.com` every 15 s, 3 missed
+replies close the session. Key exchanges: MINA's defaults minus any Montgomery-curve method (curve25519 / curve448 and
+the sntrup / ML-KEM hybrids on X25519) whose real key agreement fails on the device (`SshAlgorithms`: on Android the
+XDH key pair and agreement can come from different providers, and API < 33 has no XDH); ECDH nistp* and DH group
+exchange always remain. No `~/.ssh` files are read on the phone.
+
+**Launch** (`RemoteLaunch`): the exec command is a fixed `sh -c '<script>'` with no value in it and no quoting that
+bash / zsh / fish / sh would read differently. The app writes the values to the channel's stdin first, as
+`NAME=value` lines ended by an empty line: `DSH_REMOTE_ID` (host entry id), `DSH_REMOTE_WORKDIR`, `DSH_REMOTE_CMD`,
+then `DEEPSEEK_API_KEY` (this phone's key, when the entry shares it) and the user's variables. Secrets therefore never
+appear in the remote process list or on its disk. The script:
+
+1. exports those lines; enters the working directory (`~` / `~/…` expanded; empty = `$HOME`), else prints
+   `DSH-REMOTE-ERR workdir <dir>` and exits 3;
+2. resolves the command (an existing file path is used as is, otherwise the text is split into words, e.g.
+   `npx -y @deepseek-ai/dsh`); a command with a `/` puts its directory first in `PATH` (the Node next to an nvm dsh);
+   a command not on the non-interactive `PATH` is looked up again with the login shell's `PATH`
+   (`$SHELL -lc 'echo "DSHPATH=$PATH"'`, stdin from `/dev/null`); still missing: `DSH-REMOTE-ERR nodsh <cmd>`, exit 127;
+3. takeover: `~/.cache/dsh-android/<DSH_REMOTE_ID>.pid` names the dsh a previous connection of this host entry
+   started; if that process is alive and its arguments contain `--profile sdk` (a link that died without the server
+   noticing) it gets SIGTERM, up to 5 s, then SIGKILL, so the new process can open the same sessions. The script's
+   own pid (dsh's after `exec`) is written there;
+4. prints `DSH-REMOTE-OK <cwd>` and `exec <command> --profile sdk`.
+
+The app reads stdout byte by byte up to the `DSH-REMOTE-` line (a login banner before it is skipped; 60 s limit),
+then hands the stream to `JsonRpcPeer`. stderr is kept (last 4000 characters) for failure details: a dsh that exits
+while booting (old Node, broken install) is `DshExited` with that tail.
+
+**Protocol differences** (stock dsh, `RemoteRuntime`): `initialize { cwd: <the script's cwd>, provider, model,
+approvalRequests: true, capabilities: { userQuestions: true } }` with the host entry's route (default
+`deepseek-official` / the app's default DeepSeek model; a provider configured on the computer can be named). None of
+the Android extensions exist there (`android/session/*`, `android/models/reasoning`, `account/*`, `android/ext/*`,
+the capability bridge, `session/prompt` `mode: 'steer'`), so the app never sends them to a remote runtime: the
+permission mode is applied only app-side (`SessionStore.approve` answers `approval/request` by the conversation's
+preset), a message sent while a remote turn runs waits in the app queue, there is no model / mode picker, no device
+tools, no file attachments (images are sent inline), and phone-network waiting (§2 `waitForNetwork`) does not apply.
+编辑 / 重试 / 分叉 (#2) need `android/session/fork`, so remote conversations offer none (SessionStore refuses as a
+backstop). 工作目录 (#76) picks a folder of this phone, so it is hidden there (the host entry's directory applies;
+`session/working-directory/set` itself is stock). Reasoning translation (#15) is text-only and keeps using the
+embedded engine (`android/reasoning/translate`), also for remote conversations.
+`approval/request`, `user-question/ask`, `session.event`, `session.status`, `subagent.started`, `session/resume` and
+`shutdown` are used exactly as with the embedded engine.
+
+**Lifecycle** (`RemoteEngine`, one per host entry): connects at a conversation's first prompt; a foreground service
+(`RemoteService`, specialUse) keeps the app process alive while any host is connected; disconnects after 10 minutes
+without a run of that host. Losing the link (keepalive, server gone, or the phone's default network changing, which
+reconnects at once) is an engine loss for that host's conversations only: SessionStore resumes them on a new
+connection (`session/resume`, after the takeover above) and continues each interrupted one once with a
+disconnect-specific continuation prompt; repeated losses fall under the same `RestartPolicy` backoff / breaker as
+`:engine` crashes, except that a network switch retries after 1 s without counting. Stop in a remote conversation
+ends that host's dsh (`shutdown`), not the embedded engine. Failures are classified (`RemoteException.Kind`: Offline,
+Dns, Timeout, Refused, Unreachable, HostKeyUnknown, HostKeyChanged, Auth, KeyInvalid, KeyPassphrase, Workdir, NoDsh,
+DshExited, Initialize, Disconnected, HostMissing) and logged as `app/error { kind: "remote", code: <Kind> }`.
+
+**Storage**: host entries in the DataStore `remote_hosts` (JSON: name, address, port, user, auth kind, workdir,
+command, provider, model, share-key switch, trusted host key) plus the active workspace; password, private key,
+passphrase and the environment text in `SecretStore` (`remote-<id>-password|key|passphrase|env`). Each conversation
+row records its runtime in `sessions.hostId` (null = this phone; Room v7). Deleting a host entry deletes its secrets
+and its conversations on the phone; dsh's own session logs on the computer stay.
+

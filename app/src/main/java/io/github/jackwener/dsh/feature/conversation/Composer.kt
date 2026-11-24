@@ -260,6 +260,11 @@ fun Composer(
     onReasoning: (String?) -> Unit = {},
     /** A line about the conversation's model shown above the editor (its own model is gone, #53); null = none. */
     modelNotice: String? = null,
+    /**
+     * Remote mode (#51): the conversation runs on a computer's dsh, named by this label (host · model). Its model
+     * is the host's, so the chip only shows it; files on the phone cannot be referenced there (images are sent).
+     */
+    remoteLabel: String? = null,
 ) {
     val c = Dsh.colors
     val context = LocalContext.current
@@ -295,12 +300,12 @@ fun Composer(
         add(ComposerCommand("image", stringResource(R.string.menu_image), R.drawable.dsw_fullscreen_outline, add = true) {
             pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         })
-        add(ComposerCommand("file", stringResource(R.string.menu_file), R.drawable.dsw_paperclip_outline, add = true) { pickFile.launch(arrayOf("*/*")) })
+        if (remoteLabel == null) add(ComposerCommand("file", stringResource(R.string.menu_file), R.drawable.dsw_paperclip_outline, add = true) { pickFile.launch(arrayOf("*/*")) })
         if (showChips) {
             add(ComposerCommand("permission", stringResource(R.string.cmd_permission), R.drawable.dsw_shield_outline, stringResource(R.string.cmd_permission_desc)) { presetOpen = true })
             if (mode != null) add(ComposerCommand("mode", stringResource(R.string.mode_menu_title), ModeUi.icon(mode),
                 if (modeLocked) stringResource(R.string.mode_locked) else stringResource(R.string.mode_menu_hint)) { modeOpen = true })
-            add(ComposerCommand("model", stringResource(R.string.cmd_model), R.drawable.dsw_data_outline, stringResource(R.string.cmd_model_desc)) { modelOpen = true })
+            if (remoteLabel == null) add(ComposerCommand("model", stringResource(R.string.cmd_model), R.drawable.dsw_data_outline, stringResource(R.string.cmd_model_desc)) { modelOpen = true })
         }
         actions.onNewSession?.let { add(ComposerCommand("new", stringResource(R.string.new_session), R.drawable.dsw_new_chat_outline, run = it)) }
         actions.onTrajectory?.let { add(ComposerCommand("trajectory", stringResource(R.string.view_trajectory), R.drawable.dsw_inspect_outline, stringResource(R.string.cmd_trajectory_desc), run = it)) }
@@ -404,8 +409,10 @@ fun Composer(
             if (showChips && mode != null) ModeChip(mode, modes, modeLocked, narrow, onMode, onManageModes, modeOpen, { modeOpen = it }, settled)
             // The context ring and model chip take only the space left, so Send always stays on screen.
             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)) {
-            if (showChips && contextTokens > 0) ContextRing(contextTokens, model.contextWindow, model.contextSource)
-            if (showChips) Box(Modifier.weight(1f, fill = false)) {
+            if (showChips && remoteLabel != null) Text(remoteLabel, Modifier.weight(1f, fill = false).padding(horizontal = 6.dp), style = DshType.xs13m,
+                color = c.labelSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (showChips && remoteLabel == null && contextTokens > 0) ContextRing(contextTokens, model.contextWindow, model.contextSource)
+            if (showChips && remoteLabel == null) Box(Modifier.weight(1f, fill = false)) {
                 // Third-party models: the levels the engine reports for them (#46); the chip names the level in effect.
                 val defaultLabel = stringResource(R.string.effort_default)
                 val reasoningMenu = if (model.isDeepSeek) null else ReasoningLevels.menu(reasoning, reasoningChoice, defaultLabel)
