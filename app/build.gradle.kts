@@ -147,4 +147,8 @@ dependencies {
     implementation(libs.pdfbox.android) { exclude(group = "org.bouncycastle") }
     // Offline text recognition (Chinese + Latin, bundled model) for custom-drawn screens without readable nodes.
     implementation(libs.mlkit.text.chinese)
+    // Remote mode (#51): SSH to a computer that runs dsh (Apache MINA SSHD, Apache-2.0). Ed25519 keys through
+    // net.i2p eddsa (CC0, 60 KB) instead of BouncyCastle (~9 MB); curve25519 key exchange where Android has XDH (API 33+).
+    implementation(libs.sshd.core) { exclude(group = "org.slf4j", module = "jcl-over-slf4j") }
+    implementation(libs.eddsa)
 }
