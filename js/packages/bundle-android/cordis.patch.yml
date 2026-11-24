@@ -197,6 +197,14 @@
       config:
         reasoning: lowest
 
+    # Reasoning translation on demand (#15, plugin-guard translate.js): `android/reasoning/translate`
+    # over dsh's translator service (anonymous Bing / Google endpoints, no key, no session records).
+    # dsh's own consumer of it (cot-translation, a web-client Remote) is not shipped.
+    - id: translator
+      name: '@deepseek-ai/dsh-experimental-translator'
+    - id: android-translate
+      name: '@dsh-android/plugin-guard/translate'
+
     # DeepSeek account login. dsh-base mounts the account provider
     # (`deepseek-account`, OAuth + PKCE against platform.deepseek.com) and the
     # `deepseek-account` model route; this row adds the loopback callback

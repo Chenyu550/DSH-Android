@@ -201,6 +201,16 @@ an offset past its log (`LogSeqs`), never treating a seq as a cross-generation i
   engine runs. dsh's user title pins the conversation (a title call still waiting is dropped); `applied: false` when
   this process does not hold the conversation. The app keeps its own record either way (`app/title` event: engine
   `session/title` events never replace a title the user set).
+- `android/reasoning/translate { text, targetLanguage }` → `{ text, provider }` | `{ error: { code, message } }`
+  (plugin-guard `translate.js`, row `android-translate`, #15): 翻译 under an expanded 思考 row. dsh's `translator`
+  service (`@deepseek-ai/dsh-experimental-translator`, row `translator`) sends the text to Bing's anonymous Edge endpoint,
+  else Google's when Bing cannot be reached (no key, no model call, no session records); text over its 4000-character
+  request limit goes in paragraph / line pieces. `targetLanguage` is the UI language (`zh-Hans`, `zh-Hant`, `en`, `ru`, …).
+  `code` is dsh's `TranslationErrorCode` (`TRANSLATION_REQUEST_FAILED` / `_TIMEOUT` / `_HTTP_ERROR`: unreachable;
+  `_INVALID_RESPONSE`: unreadable answer). The app sends it on the control channel (never restarts a running engine),
+  keeps results per text and language for the process, and offers 翻译 only when the text's dominant script is not the
+  UI language's (DeepSeek's Chinese reasoning for a Chinese UI has none). dsh's own consumer
+  (`dsh-experimental-client-ui-cot-translation`, a web-client Remote) is pruned.
 - `android/session/model { sessionId, provider, model, reasoningEffort? } | { sessionId, model: null }` →
   `{ selected: { provider, model, reasoningEffort? } }` (plugin-guard `session-model.js`, through patch 10; #53). Each
   conversation's own model (the app's `sessions.modelProvider/modelId/modelEffort`: a copy of the default taken at its

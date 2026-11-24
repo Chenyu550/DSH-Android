@@ -121,6 +121,15 @@
     <string name="close">Close</string>
     <string name="current_page">Current page: %1$s</string>
     <string name="think">Think</string>
+    <string name="translation_translate">Translate</string>
+    <string name="translation_running">Translating…</string>
+    <string name="translation_label">Translation (machine)</string>
+    <string name="translation_hide">Hide translation</string>
+    <string name="translation_show">Show translation</string>
+    <string name="translation_err_unreachable">Couldn\'t reach the translation service (Bing / Google Translate). Check your network and try again.</string>
+    <string name="translation_err_response">The translation service sent an answer that couldn\'t be read. Try again later.</string>
+    <string name="translation_err_engine">The agent engine isn\'t ready, so this can\'t be translated right now.</string>
+    <string name="translation_err_other">Translation failed: %1$s</string>
     <string name="inspect">Inspect</string>
     <string name="copied">Copied</string>
     <string name="screenshot">Screenshot</string>

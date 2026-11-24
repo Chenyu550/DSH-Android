@@ -14,9 +14,10 @@
     "./session-model": "./session-model.js",
     "./observations": "./observations.js",
     "./session-title": "./session-title.js",
+    "./translate": "./translate.js",
     "./package.json": "./package.json"
   },
-  "files": ["index.js", "hardline.js", "experience.js", "continuation.js", "session-model.js", "observations.js", "session-title.js", "package.json"],
+  "files": ["index.js", "hardline.js", "experience.js", "continuation.js", "session-model.js", "observations.js", "session-title.js", "translate.js", "package.json"],
   "engines": {
     "dsh": "0.2.2-rc.5"
   }

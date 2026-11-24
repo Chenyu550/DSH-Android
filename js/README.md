@@ -35,6 +35,7 @@ DeepSeek Harness (dsh) **0.2.2-rc.5**, installed unmodified from npm and customi
 | `test/extensions.test.mjs` | plugins end to end on a built stage with two fake registries, fake MCP servers and real restarts (native refusal before download, scan rollback, web-service precheck, peers, config forms, mirror fallback, integrity, updates, deferred removal, crash suspension, safe mode, engine replacement, MCP, skills); `DSH_STAGE_NM` as below, ~4 min |
 | `test/observations.test.mjs` | plugin-guard `observations.js` (#76) with dsh's real fs-observation-policy on a fake bus: a read recorded in the session log is replayed when the session's agent is created again (engine restart), so `edit` passes; a file changed since stays unobserved; `node --test js/test/observations.test.mjs` (`DSH_STAGE_NM` as above) |
 | `test/session-title.test.mjs` | plugin-guard `session-title.js` (#89): the title provider waits for the first turn's end, sends the first message and the reply's text (no reasoning, tool calls or results) on the conversation's or the pinned model with the chosen level, a rename / engine stop aborts it without a model call, automation runs are skipped, `android/session/title` pins a live conversation's title; output cleanup: `node --test js/test/session-title.test.mjs` |
+| `test/translate.test.mjs` | plugin-guard `translate.js` (#15, `android/reasoning/translate`): pieces at paragraph / line / space breaks that join back, Google only when Bing cannot be reached, error codes; dsh's real translator against fake Bing / Google endpoints; the real engine mounts the `translator` + `android-translate` rows and answers the method: `DSH_STAGE_NM=… node --test js/test/translate.test.mjs` |
 | `test/guard-ask.test.mjs` | plugin-guard's per-plugin ask-before-call |
 | `test/session-model.test.mjs` | plugin-guard `session-model.js` (#53): `android/session/model` payload validation, installed on the root agent at creation or in place while live (never on subagents or other sessions), `null` forgets, a refused route / level changes nothing: `node --test js/test/session-model.test.mjs` |
 | `test/host-e2e.mjs` | host end-to-end run of the built `engine.zip` with a fake bridge; phase H checks deferred tool loading on the wire (capture proxy in front of DeepSeek); phase X installs real plugins from npm |
@@ -115,7 +116,8 @@ Patch 07 adds `android` to dsh's shipped profile templates, so `--profile androi
      `schedule`, `tool-schedule` (the app's rules are the automations), `connection`, `file-upload`, `workspace`,
      `file-reference-local`, `present`, `deliverable-file-references` (desktop-host rows; `connection` would also serve
      its browser `/api` on android-account's loopback server), `tmux-context` (otel + pi-ai halve boot-time modules);
-   - inserted rows: `android-extensions`, `android-device`, `android-guard`, `android-mode`, `android-account`, `llm-service-lite`.
+   - inserted rows: `android-extensions`, `android-device`, `android-guard`, `android-mode`, `android-session-title`, `translator` +
+     `android-translate` (reasoning translation on demand, #15), `android-account`, `llm-service-lite`.
    - Model default stays dsh-base's `deepseek-official` / `deepseek-flash`.
 
 Only the bundle list is persisted in `DSH_HOME`, so later engine versions can change `bundle-android` freely. The

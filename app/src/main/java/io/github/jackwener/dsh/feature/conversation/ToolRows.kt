@@ -66,7 +66,7 @@ fun prettyJson(raw: String?): String = raw?.let {
     runCatching { Pretty.encodeToString(kotlinx.serialization.json.JsonElement.serializer(), Json.parseToJsonElement(it)) }.getOrDefault(it)
 } ?: ""
 
-/** Thinking row (dsh ReasoningRow): collapsed to 思考 · first-line preview; expanded body is compact markdown indented 22. */
+/** Thinking row (dsh ReasoningRow): collapsed to 思考 · first-line preview; expanded body is compact markdown indented 22, then 翻译 (#15). */
 @Composable
 fun ReasoningRow(b: Block.Reasoning, live: Boolean) {
     var open by rememberSaveable(b.key) { mutableStateOf(false) }
@@ -74,7 +74,10 @@ fun ReasoningRow(b: Block.Reasoning, live: Boolean) {
     Column {
         DisclosureRow(R.drawable.dsw_think_outline, stringResource(R.string.think), preview, open, { open = !open }, live = live)
         ExpandBody(open) {
-            Box(Modifier.padding(start = 22.dp, top = 4.dp, bottom = 4.dp)) { DshMarkdown(b.text, compact = true) }
+            Column(Modifier.padding(start = 22.dp, top = 4.dp, bottom = 4.dp)) {
+                DshMarkdown(b.text, compact = true)
+                if (!live) ReasoningTranslation(b.key, b.text)
+            }
         }
     }
 }

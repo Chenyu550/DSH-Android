@@ -121,6 +121,15 @@
     <string name="close">关闭</string>
     <string name="current_page">当前页面：%1$s</string>
     <string name="think">思考</string>
+    <string name="translation_translate">翻译</string>
+    <string name="translation_running">正在翻译…</string>
+    <string name="translation_label">译文（机器翻译）</string>
+    <string name="translation_hide">隐藏译文</string>
+    <string name="translation_show">显示译文</string>
+    <string name="translation_err_unreachable">连不上翻译服务（必应 / 谷歌翻译），请检查网络后重试</string>
+    <string name="translation_err_response">翻译服务返回了无法识别的结果，请稍后重试</string>
+    <string name="translation_err_engine">智能体引擎未就绪，暂时无法翻译</string>
+    <string name="translation_err_other">翻译失败：%1$s</string>
     <string name="inspect">查看</string>
     <string name="copied">已复制</string>
     <string name="screenshot">截图</string>

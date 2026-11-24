@@ -118,6 +118,15 @@
     <string name="close">Закрыть</string>
     <string name="current_page">Текущий экран: %1$s</string>
     <string name="think">Размышления</string>
+    <string name="translation_translate">Перевести</string>
+    <string name="translation_running">Перевод…</string>
+    <string name="translation_label">Перевод (машинный)</string>
+    <string name="translation_hide">Скрыть перевод</string>
+    <string name="translation_show">Показать перевод</string>
+    <string name="translation_err_unreachable">Не удалось связаться со службой перевода (Bing / Google Переводчик). Проверьте сеть и повторите попытку.</string>
+    <string name="translation_err_response">Служба перевода вернула ответ, который не удалось прочитать. Повторите попытку позже.</string>
+    <string name="translation_err_engine">Движок агента не готов, поэтому сейчас перевести нельзя.</string>
+    <string name="translation_err_other">Не удалось перевести: %1$s</string>
     <string name="inspect">Просмотр</string>
     <string name="copied">Скопировано</string>
     <string name="screenshot">Снимок экрана</string>
