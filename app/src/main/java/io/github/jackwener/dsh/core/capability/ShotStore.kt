@@ -28,5 +28,10 @@ object ShotStore {
 
     fun deleteSession(context: Context, sessionId: String) { dir(context, sessionId).deleteRecursively() }
 
+    /** A forked conversation (#2) shows its inherited tool calls' screenshots too. */
+    fun copySession(context: Context, from: String, to: String) {
+        dir(context, from).takeIf { it.isDirectory }?.let { runCatching { it.copyRecursively(dir(context, to), overwrite = true) } }
+    }
+
     private fun safe(s: String) = s.replace(Regex("[^A-Za-z0-9_.-]"), "_")
 }

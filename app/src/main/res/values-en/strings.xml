@@ -1014,4 +1014,25 @@
     <string name="adb_jit_title">Reconnect the ADB channel to continue</string>
     <string name="adb_jit_body">“%1$s” needs shell access. DSH\'s ADB channel is paired but cannot connect now: turn on Developer options → Wireless debugging and it continues by itself.</string>
     <string name="adb_jit_alt">Rather not install Shizuku? Use “Direct ADB access” in Settings → Phone permissions.</string>
+
+    <!-- 编辑 / 重试 / 分叉 (#2) -->
+    <string name="msg_edit">Edit</string>
+    <string name="msg_retry">Retry</string>
+    <string name="msg_fork">Fork from here</string>
+    <string name="msg_retry_desc">Regenerate this reply in a new version</string>
+    <string name="msg_edit_desc">Change it and send again in a new version</string>
+    <string name="msg_fork_desc">Keep everything up to this turn in a new conversation</string>
+    <string name="fork_busy">The conversation is running. Stop it before you edit, retry or fork.</string>
+    <string name="fork_failed">Could not create the new conversation: %1$s</string>
+    <string name="fork_title">%1$s (branch)</string>
+    <string name="edit_banner">Editing message</string>
+    <string name="edit_banner_hint">Sending continues in a new version; the original stays</string>
+    <string name="edit_cancel">Cancel editing</string>
+    <string name="edit_kept">%1$d original attachment(s)</string>
+    <string name="lineage_edit">This version was sent again after an edit</string>
+    <string name="lineage_retry">This version is a regenerated reply</string>
+    <string name="lineage_fork">Forked from “%1$s”</string>
+    <string name="lineage_open_source">Open the original</string>
+    <string name="lineage_newer">This conversation has a newer version</string>
+    <string name="lineage_open_newer">Open the newer version</string>
 </resources>

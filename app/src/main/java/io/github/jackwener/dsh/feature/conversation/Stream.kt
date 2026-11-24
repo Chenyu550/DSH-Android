@@ -91,6 +91,12 @@ import io.github.jackwener.dsh.core.provider.NetDiagnose
 import io.github.jackwener.dsh.core.session.TurnError
 import io.github.jackwener.dsh.core.session.TurnStatus
 import io.github.jackwener.dsh.core.session.UserMsg
+import io.github.jackwener.dsh.core.session.ForkKind
+import io.github.jackwener.dsh.core.session.Lineage
+import io.github.jackwener.dsh.core.designsystem.DMenu
+import io.github.jackwener.dsh.core.designsystem.MenuDivider
+import io.github.jackwener.dsh.core.designsystem.MenuItem
+import androidx.compose.foundation.gestures.detectTapGestures
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -117,6 +123,11 @@ fun ChatStream(
     modifier: Modifier = Modifier,
     onContinue: () -> Unit = {},
     compact: Boolean = false,
+    /** 编辑 / 重试 / 从这里分叉 on messages (#2); null: none (the quick panel). */
+    actions: MessageActions? = null,
+    /** Where the conversation stands among its forks: a line above its messages. */
+    lineage: Lineage = Lineage(),
+    onOpenSession: (String) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     var follow by rememberSaveable { mutableStateOf(true) }
@@ -147,9 +158,13 @@ fun ChatStream(
     Box(modifier) {
         LazyColumn(Modifier.fillMaxSize().pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial); hold = true } },
             state = listState, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
+            if (!lineage.isEmpty) item(key = "lineage") { LineageRow(lineage, onOpenSession) }
+            // Forking needs the conversation at rest (no turn running, no fork being made).
+            val turnActions = actions?.takeIf { !live.running }
             items(conv.turns, key = { it.key }) { turn ->
                 val isLast = turn === conv.turns.last()
-                TurnView(turn, isLast, live, details, onInspect, onRetry, onOpenSettings, onContinue, compact)
+                TurnView(turn, isLast, live, details, onInspect, onRetry, onOpenSettings, onContinue, compact,
+                    actions?.let { a -> TurnActions(a, conv.turns, turn, enabled = turnActions != null) })
             }
             // Sent into the running turn, not logged yet: the logged user/message takes its place.
             items(live.steers, key = { "steer/${it.id}" }) { PendingSteer(it) }
@@ -176,6 +191,7 @@ fun ChatStream(
 private fun TurnView(
     turn: Turn, isLast: Boolean, live: SessionLive, details: WorkDetails,
     onInspect: (String) -> Unit, onRetry: (TurnError) -> Unit, onOpenSettings: (String) -> Unit, onContinue: () -> Unit, compact: Boolean,
+    actions: TurnActions?,
 ) {
     val running = turn.status == TurnStatus.Running
     val process = turn.process
@@ -186,7 +202,7 @@ private fun TurnView(
     }
     var open by rememberSaveable(turn.key) { mutableStateOf(defaultOpen) }
     Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-        turn.user?.let { if (DshNotice.isNotice(it.text)) DshNoticeRow(it.text) else UserMessage(it, compact) }
+        turn.user?.let { if (DshNotice.isNotice(it.text)) DshNoticeRow(it.text) else UserMessage(it, compact, actions?.takeIf { _ -> it.messageId != null }) }
         if (process.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))
             if (!running) TurnHeader(turn, open) { open = !open }
@@ -205,7 +221,7 @@ private fun TurnView(
         }
         if (end != null && end.continuable) EndCard(turn, end, canContinue = isLast && !live.running, onContinue, onOpenSettings)
         turn.error?.let { ErrorRow(it, onRetry, onOpenSettings, retryable = isLast && !live.running) }
-        if (turn.reply != null && !running) TailActions(turn)
+        if (turn.reply != null && !running) TailActions(turn, actions?.takeIf { it.enabled && turn.user?.messageId != null })
     }
 }
 
@@ -257,39 +273,66 @@ private fun TurnHeader(turn: Turn, open: Boolean, onToggle: () -> Unit) {
     }
 }
 
+/**
+ * A human message. With [actions] (it reached the engine), a long press opens 编辑 / 重试 / 从这里分叉 / 复制
+ * (#2; greyed while the conversation runs) and the row below it has 编辑 next to 复制.
+ */
 @Composable
-private fun UserMessage(u: UserMsg, compact: Boolean) {
+private fun UserMessage(u: UserMsg, compact: Boolean, actions: TurnActions?) {
     val c = Dsh.colors
     val context = LocalContext.current
     val maxW = (LocalConfiguration.current.screenWidthDp * 0.82f).dp
+    var menu by remember { mutableStateOf(false) }
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val longPress = actions?.let { { haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); menu = true } }
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
-        if (u.images > 0 || u.files > 0) {
-            Row(Modifier.padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (u.images > 0) Tag(stringResource(R.string.images_n, u.images))
-                if (u.files > 0) Tag(stringResource(R.string.files_n, u.files))
+        Box {
+            Column(horizontalAlignment = Alignment.End) {
+                if (u.images > 0 || u.files > 0) {
+                    Row(Modifier.padding(bottom = 8.dp).then(longPress?.let { Modifier.longPress(it) } ?: Modifier), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (u.images > 0) Tag(stringResource(R.string.images_n, u.images))
+                        if (u.files > 0) Tag(stringResource(R.string.files_n, u.files))
+                    }
+                }
+                if (u.text.isNotBlank()) UserBubble(u.text, Modifier.widthIn(max = maxW), onLongPress = longPress)
+            }
+            if (actions != null) DMenu(menu, { menu = false }) {
+                MenuItem(stringResource(R.string.msg_edit), { menu = false; actions.edit(u) }, R.drawable.dsw_edit_outline,
+                    stringResource(R.string.msg_edit_desc), enabled = actions.enabled)
+                MenuItem(stringResource(R.string.msg_retry), { menu = false; actions.retry(u) }, R.drawable.dsw_refresh_outline,
+                    stringResource(R.string.msg_retry_desc), enabled = actions.enabled)
+                MenuItem(stringResource(R.string.msg_fork), { menu = false; actions.fork() }, R.drawable.dsw_branch_outline,
+                    stringResource(R.string.msg_fork_desc), enabled = actions.enabled)
+                MenuDivider()
+                MenuItem(stringResource(R.string.copy_message), { menu = false; copyText(context, u.text) }, R.drawable.dsw_copy_outline)
             }
         }
-        if (u.text.isNotBlank()) UserBubble(u.text, Modifier.widthIn(max = maxW))
         if (!compact) Row(Modifier.padding(top = 6.dp).height(28.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(Fmt.stamp(context, u.time), style = DshType.xs13, color = c.labelTertiary)
             IconBtn(R.drawable.dsw_copy_outline, { copyText(context, u.text) }, iconSize = 15.dp, tint = c.labelTertiary, contentDescription = stringResource(R.string.copy_message))
+            if (actions?.enabled == true) IconBtn(R.drawable.dsw_edit_outline, { actions.edit(u) }, iconSize = 15.dp, tint = c.labelTertiary, contentDescription = stringResource(R.string.msg_edit))
         }
     }
 }
+
+/** A long press (no ripple, no tap action): the message menu. */
+private fun Modifier.longPress(onLongPress: () -> Unit): Modifier =
+    pointerInput(onLongPress) { detectTapGestures(onLongPress = { onLongPress() }) }
 
 /**
  * The user's words in a bubble, as markdown (#85) with every line break kept: what was typed or pasted
  * keeps its shape. A long one (#76) is folded to [USER_FOLD_LINES] lines with 展开全部 / 收起.
  */
 @Composable
-private fun UserBubble(text: String, modifier: Modifier = Modifier) {
+private fun UserBubble(text: String, modifier: Modifier = Modifier, onLongPress: (() -> Unit)? = null) {
     val c = Dsh.colors
     val density = LocalDensity.current
     val foldPx = with(density) { (DshType.body.lineHeight * USER_FOLD_LINES).roundToPx() + 12.dp.roundToPx() }
     var expanded by rememberSaveable(text) { mutableStateOf(false) }
     var long by remember(text) { mutableStateOf(false) }
     val folded = long && !expanded
-    Column(modifier.clip(Radius.xl).background(c.bubble).padding(horizontal = 16.dp, vertical = 6.dp)) {
+    // With a message menu the long press opens it (复制 is there); text selection is for bubbles without one.
+    Column(modifier.clip(Radius.xl).background(c.bubble).then(onLongPress?.let { Modifier.longPress(it) } ?: Modifier).padding(horizontal = 16.dp, vertical = 6.dp)) {
         Box(Modifier.clipToBounds()
             .drawWithContent {
                 drawContent()
@@ -302,7 +345,7 @@ private fun UserBubble(text: String, modifier: Modifier = Modifier) {
                 if (isLong != long) long = isLong
                 layout(p.width, if (isLong && !expanded) foldPx else p.height) { p.place(0, 0) }
             }) {
-            SelectionContainer { DshMarkdown(text, breaks = true) }
+            if (onLongPress != null) DshMarkdown(text, breaks = true) else SelectionContainer { DshMarkdown(text, breaks = true) }
         }
         if (long) Text(stringResource(if (expanded) R.string.user_msg_collapse else R.string.user_msg_expand),
             Modifier.padding(top = 2.dp, bottom = 4.dp).clip(Radius.sm).pressable({ expanded = !expanded }, Radius.sm).padding(vertical = 2.dp),
@@ -326,11 +369,16 @@ private fun PendingSteer(m: SteerMessage) {
 }
 
 @Composable
-private fun TailActions(turn: Turn) {
+private fun TailActions(turn: Turn, actions: TurnActions?) {
     val c = Dsh.colors
     val context = LocalContext.current
     Row(Modifier.padding(top = 10.dp).offset(x = (-6).dp), verticalAlignment = Alignment.CenterVertically) {
         IconBtn(R.drawable.dsw_copy_outline, { copyText(context, turn.reply?.text ?: "") }, iconSize = 17.dp, tint = c.labelTertiary, contentDescription = stringResource(R.string.copy_reply))
+        // #2: a new reply to the same message, or a new conversation from here (both keep this one).
+        turn.user?.let { u -> actions?.let { a ->
+            IconBtn(R.drawable.dsw_refresh_outline, { a.retry(u) }, iconSize = 17.dp, tint = c.labelTertiary, contentDescription = stringResource(R.string.msg_retry))
+            IconBtn(R.drawable.dsw_branch_outline, { a.fork() }, iconSize = 17.dp, tint = c.labelTertiary, contentDescription = stringResource(R.string.msg_fork))
+        } }
         if (!turn.usage.isEmpty) {
             Spacer(Modifier.width(4.dp))
             val hit = turn.usage.cacheHitRate?.let { " · " + stringResource(R.string.usage_cache_hit_short, Fmt.percent(it)) }.orEmpty()
@@ -533,5 +581,48 @@ private fun DshNoticeRow(text: String) {
         Box(Modifier.size(6.dp).clip(CircleShape).background(c.warn))
         Spacer(Modifier.width(8.dp))
         Text(shown, Modifier.weight(1f, fill = false), style = DshType.xs13, color = c.labelSecondary)
+    }
+}
+
+/**
+ * 编辑 / 重试 / 从这里分叉 (#2), from the screen that owns the composer. Each makes a new conversation from
+ * this one (dsh's fork); [onFork] gets the turns shown and the turn to keep to its end.
+ */
+class MessageActions(
+    val onEdit: (UserMsg) -> Unit,
+    val onRetry: (UserMsg) -> Unit,
+    val onFork: (List<Turn>, Turn) -> Unit,
+)
+
+/** [MessageActions] bound to one turn; [enabled] while nothing runs. */
+class TurnActions(private val a: MessageActions, private val turns: List<Turn>, private val turn: Turn, val enabled: Boolean) {
+    fun edit(u: UserMsg) { if (enabled) a.onEdit(u) }
+    fun retry(u: UserMsg) { if (enabled) a.onRetry(u) }
+    fun fork() { if (enabled) a.onFork(turns, turn) }
+}
+
+/** Above the messages of a forked or replaced conversation (#2): where it came from, or that a newer version exists. */
+@Composable
+private fun LineageRow(l: Lineage, onOpen: (String) -> Unit) {
+    val c = Dsh.colors
+    val newer = l.newer
+    val source = l.source
+    val (text, link, target) = when {
+        newer != null -> Triple(stringResource(R.string.lineage_newer), stringResource(R.string.lineage_open_newer), newer.id)
+        source != null && l.kind != null -> Triple(when (l.kind) {
+            ForkKind.Edit -> stringResource(R.string.lineage_edit)
+            ForkKind.Retry -> stringResource(R.string.lineage_retry)
+            ForkKind.Fork -> stringResource(R.string.lineage_fork, source.title.ifBlank { stringResource(R.string.untitled) })
+        }, stringResource(R.string.lineage_open_source), source.id)
+        else -> return
+    }
+    Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+        io.github.jackwener.dsh.core.designsystem.DIcon(R.drawable.dsw_branch_outline, size = 13.dp, tint = c.labelTertiary)
+        Spacer(Modifier.width(6.dp))
+        Text(text, Modifier.weight(1f, fill = false), style = DshType.xxs12, color = c.labelTertiary, maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        Spacer(Modifier.width(8.dp))
+        Text(link, Modifier.clip(Radius.sm).pressable({ onOpen(target) }, Radius.sm).padding(horizontal = 4.dp, vertical = 2.dp),
+            style = DshType.xxs12m, color = c.labelSecondary, maxLines = 1)
     }
 }
