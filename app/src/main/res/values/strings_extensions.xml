@@ -76,6 +76,15 @@
     <string name="ext_setting_secret_note">保存在本机</string>
     <string name="ext_setting_raw">高级：以代码编辑</string>
     <string name="ext_setting_raw_invalid">不是有效的值（用 JSON 写法）</string>
+    <string name="ext_status_web_ui">界面仅网页端</string>
+    <string name="ext_status_web_only">仅网页端可用</string>
+    <string name="ext_web_ui_title">界面部分只在网页端显示</string>
+    <string name="ext_web_ui_desc">这个插件带有网页客户端的界面（设置页、侧栏或面板），只在电脑端 dsh 网页里显示。Android 版没有网页界面，这部分不会出现。</string>
+    <string name="ext_web_ui_host">它的工具、命令等其他部分照常工作。</string>
+    <string name="ext_web_ui_only">它在手机上没有提供工具、命令或技能，功能主要在这些界面里，所以启用后没有可打开的内容。</string>
+    <string name="ext_web_ui_settings">它的配置可以在下方「设置」里修改。</string>
+    <string name="ext_settings_inferred">这个插件没有声明配置格式：下面按它当前的配置生成，改动直接写入，由插件自己解读。其他可用选项见 README。</string>
+    <string name="ext_setting_raw_all">以 JSON 编辑全部配置（可加入 README 里的其他选项）</string>
     <string name="ext_setting_list_hint">每行一项</string>
     <string name="ext_setting_default">默认：%s</string>
     <string name="ext_setting_unset">不设置</string>

@@ -75,6 +75,30 @@ object SchemaForm {
         return ctx.objectFields(root, emptyList(), 0)
     }
 
+    /**
+     * Fields for a row without a Schemastery `Config` (dsh-engramory keeps its settings in the patch's row config
+     * and edits them from its web page): one control per key of the current [value], by the value's own type,
+     * then the whole config as JSON ([FormField.Raw] at the root) for keys the patch does not set yet.
+     */
+    fun inferred(value: JsonElement, overridden: Collection<String> = emptyList()): List<FormField> {
+        val lockedAll = overridden.any { it.isEmpty() || it == "*" }
+        fun locked(path: List<String>) = lockedAll || path.joinToString(".").let { d -> overridden.any { d == it || d.startsWith("$it.") } }
+        fun of(key: String, v: JsonElement, path: List<String>, depth: Int): FormField {
+            val l = locked(path)
+            return when {
+                v is JsonPrimitive && v !is JsonNull && v.isString -> FormField.Text(path, key, null, l, null, multiline = '\n' in v.content || v.content.length > 80)
+                v is JsonPrimitive && v.booleanOrNull != null -> FormField.Toggle(path, key, null, l, v.booleanOrNull)
+                v is JsonPrimitive && v.doubleOrNull != null -> FormField.Number(path, key, null, l, null, integer = v.longOrNull != null)
+                v is JsonArray && v.all { it is JsonPrimitive && it !is JsonNull && it.isString } -> FormField.StringList(path, key, null, l, null)
+                // `!!js` expressions arrive as {__jsExpr}: kept whole, as JSON.
+                v is JsonObject && v.isNotEmpty() && "__jsExpr" !in v && depth < 4 -> FormField.Group(path, key, null, l, v.map { (k, sub) -> of(k, sub, path + k, depth + 1) }, collapsed = depth > 0)
+                else -> FormField.Raw(path, key, null, l)
+            }
+        }
+        val obj = value as? JsonObject ?: return listOf(FormField.Raw(emptyList(), "", null, lockedAll))
+        return obj.map { (k, v) -> of(k, v, listOf(k), 0) } + FormField.Raw(emptyList(), "", null, lockedAll)
+    }
+
     /** A schema node with the projector's wrappers removed. */
     private data class Node(
         val type: String?,

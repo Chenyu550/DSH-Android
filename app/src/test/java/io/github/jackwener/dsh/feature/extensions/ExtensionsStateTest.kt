@@ -47,6 +47,25 @@ class ExtensionsStateTest {
         assertEquals(JsonPrimitive("e1"), engine.last(ExtMethods.CONFIG_SET)["entryId"])
     }
 
+    @Test fun `a row without Config (dsh-engramory, #88) gets a form from its patch config`() = runBlocking {
+        engine.on(ExtMethods.CONFIG_GET, """{"entryId":"e3","rowId":"engramory","schema":null,"value":{"indexName":"MEMORY.md","maxLines":200,"maxBytes":25600}}""")
+        engine.on(ExtMethods.CONFIG_SET, """{"ok":true}""")
+        val ed = ConfigEditor(client, scope, "e3", "zh-CN", debounceMs = 0)
+        ed.load()
+        eventually { !ed.state.value.loading }
+        val f = ed.state.value.fields
+        assertTrue(ed.state.value.inferred)
+        assertEquals(listOf("indexName", "maxLines", "maxBytes", ""), f.map { it.title })
+        assertTrue(f[1] is FormField.Number && (f[1] as FormField.Number).integer)
+        assertTrue(f.last() is FormField.Raw)
+        // Adding a key the patch does not set (README: companion) through the JSON editor: the form follows it.
+        ed.set(emptyList(), kotlinx.serialization.json.Json.parseToJsonElement("""{"indexName":"MEMORY.md","maxLines":300,"maxBytes":25600,"companion":true}"""))
+        eventually { ed.state.value.saved }
+        assertTrue(ed.state.value.fields.any { it is FormField.Toggle && it.title == "companion" })
+        assertEquals(1, ed.state.value.revision)
+        assertEquals("""{"indexName":"MEMORY.md","maxLines":300,"maxBytes":25600,"companion":true}""", engine.last(ExtMethods.CONFIG_SET)["value"].toString())
+    }
+
     @Test fun `validation errors land under their field`() = runBlocking {
         engine.on(ExtMethods.CONFIG_GET, configGet)
         engine.on(ExtMethods.CONFIG_SET, """{"ok":false,"errors":[{"path":"limit","message":"expected a number >= 1"},{"path":"","message":"bad"}]}""")
@@ -63,7 +82,7 @@ class ExtensionsStateTest {
         assertEquals("x", ed.state.value.errors["limit"])
     }
 
-    @Test fun `a row the app manages is shown locked, a row without Config has no fields`() = runBlocking {
+    @Test fun `a row the app manages is shown locked, a row without Config only offers its JSON`() = runBlocking {
         engine.on(ExtMethods.CONFIG_GET, configGet.replace("\"overridden\":[]", "\"overridden\":[\"*\"],\"managedByApp\":true"))
         val ed = ConfigEditor(client, scope, "e1", "en")
         ed.load()
@@ -73,7 +92,8 @@ class ExtensionsStateTest {
         val ed2 = ConfigEditor(client, scope, "e2", "en")
         ed2.load()
         eventually { !ed2.state.value.loading }
-        assertTrue(ed2.state.value.fields.isEmpty())
+        assertEquals(listOf<List<String>>(emptyList()), ed2.state.value.fields.map { it.path })
+        assertTrue(ed2.state.value.inferred)
         assertEquals(null, ed2.state.value.loadError)
         assertEquals("a.b", ConfigEditor.normalizePath("/a/b"))
         assertEquals("a.b", ConfigEditor.normalizePath("$.a.b"))

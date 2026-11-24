@@ -132,6 +132,11 @@ data class ExtRow(
     val configurable: Boolean = false,
     /** Explicit per-row switch state when the engine reports one; otherwise derived from [phase]. */
     val enabled: Boolean? = null,
+    /**
+     * `dsh.client.platform` of the row's package ("web"): it has a browser face (pages, panels, a settings card)
+     * that only dsh's web client renders. The phone ships no web client, so that part never shows (#80/#88).
+     */
+    val client: String? = null,
 ) {
     val isEnabled: Boolean get() = enabled ?: (phase != "disabled")
 }
@@ -187,6 +192,11 @@ data class ExtPlugin(
     val malformed: Boolean = false,
 ) {
     val displayTitle: String get() = title?.get()?.takeIf { it.isNotBlank() } ?: name
+    /** Some of it is web-client UI that the phone does not show. */
+    val webUi: Boolean get() = rows.any { it.client != null }
+    /** Running, every row has a web face and it adds no tools / skills / commands: nothing on the phone to use or open. */
+    val webOnly: Boolean get() = status == ExtStatus.ACTIVE && rows.isNotEmpty() && rows.all { it.client != null } &&
+        tools.isEmpty() && skills.isEmpty() && commands.isEmpty()
     val descriptionText: String? get() = description?.get()?.takeIf { it.isNotBlank() }
 
     companion object {
@@ -314,7 +324,7 @@ data class InspectResult(
 
 @Serializable
 data class ConfigGetResult(
-    /** null: the row has no `Config` (nothing to edit). */
+    /** null: the row has no `Config`; the form follows its current [value] (SchemaForm.inferred). */
     val schema: JsonObject? = null,
     val value: JsonElement? = null,
     /** Paths (dot-separated, `*` = all) the app's own settings layer decides; shown read-only. */

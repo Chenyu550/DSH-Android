@@ -76,6 +76,15 @@
     <string name="ext_setting_secret_note">Stored on this device</string>
     <string name="ext_setting_raw">Advanced: edit as code</string>
     <string name="ext_setting_raw_invalid">Not a valid value (use JSON)</string>
+    <string name="ext_status_web_ui">UI is web-only</string>
+    <string name="ext_status_web_only">Web client only</string>
+    <string name="ext_web_ui_title">Its UI only shows in the web client</string>
+    <string name="ext_web_ui_desc">This plugin has web-client UI (a settings page, sidebar or panels) that only dsh\'s desktop web client shows. DSH for Android has no web client, so that part does not appear.</string>
+    <string name="ext_web_ui_host">Its tools, commands and other parts work as usual.</string>
+    <string name="ext_web_ui_only">It adds no tools, commands or skills here; what it offers is in that UI, so on the phone there is nothing to open.</string>
+    <string name="ext_web_ui_settings">Its configuration can be changed under Settings below.</string>
+    <string name="ext_settings_inferred">This plugin declares no configuration format: the fields below follow its current configuration and are saved as entered; the plugin interprets them. See the README for other options.</string>
+    <string name="ext_setting_raw_all">Edit the whole configuration as JSON (add other options from the README)</string>
     <string name="ext_setting_list_hint">One per line</string>
     <string name="ext_setting_default">Default: %s</string>
     <string name="ext_setting_unset">Not set</string>

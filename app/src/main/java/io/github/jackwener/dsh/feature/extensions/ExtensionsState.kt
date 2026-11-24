@@ -44,19 +44,28 @@ class ConfigEditor(
         val saving: Boolean = false,
         val saved: Boolean = false,
         val loadError: UserError? = null,
+        /** The row declares no config schema: [fields] follow its current config (SchemaForm.inferred), nothing checks them. */
+        val inferred: Boolean = false,
+        /** Bumped when the whole config is replaced (JSON editor): fields drop the text they hold and re-read [value]. */
+        val revision: Int = 0,
     )
 
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
     private var saveJob: Job? = null
+    private var overridden: List<String> = emptyList()
 
     fun load() = scope.launch {
         _state.value = try {
             val r: ConfigGetResult = client.configGet(entryId)
             when {
                 r.error != null -> State(loading = false, loadError = r.error)
-                else -> State(loading = false, fields = r.schema?.let { SchemaForm.fields(it, language, r.overridden + if (r.managedByApp) listOf("*") else emptyList()) }.orEmpty(),
-                    value = r.value ?: JsonObject(emptyMap()))
+                else -> {
+                    val value = r.value ?: JsonObject(emptyMap())
+                    overridden = r.overridden + if (r.managedByApp) listOf("*") else emptyList()
+                    State(loading = false, value = value, inferred = r.schema == null,
+                        fields = r.schema?.let { SchemaForm.fields(it, language, overridden) } ?: SchemaForm.inferred(value, overridden))
+                }
             }
         } catch (e: ExtException) {
             State(loading = false, loadError = e.error)
@@ -65,7 +74,13 @@ class ConfigEditor(
 
     /** Sets one field ([value] null = back to its default) and saves after [debounceMs]. */
     fun set(path: List<String>, value: JsonElement?) {
-        _state.update { it.copy(value = SchemaForm.withValue(it.value, path, value), errors = it.errors - path.joinToString("."), saved = false) }
+        _state.update {
+            val next = SchemaForm.withValue(it.value, path, value)
+            // The whole config edited as JSON: an inferred form follows its new keys.
+            it.copy(value = next, errors = it.errors - path.joinToString("."), saved = false,
+                fields = if (it.inferred && path.isEmpty()) SchemaForm.inferred(next, overridden) else it.fields,
+                revision = if (path.isEmpty()) it.revision + 1 else it.revision)
+        }
         saveJob?.cancel()
         saveJob = scope.launch { delay(debounceMs); save() }
     }

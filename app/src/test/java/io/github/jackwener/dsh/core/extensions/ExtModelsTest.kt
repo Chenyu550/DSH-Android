@@ -34,6 +34,22 @@ class ExtModelsTest {
         assertTrue(l.notices.single().isActivation)
     }
 
+    @Test fun `rows with a web client face mark the plugin's UI as web-only (#80)`() {
+        val engramory = RpcJson.decodeFromString(ExtPlugin.serializer(), """{"name":"dsh-engramory","tools":["memory_read"],
+            "rows":[{"id":"engramory","module":"dsh-engramory","entryId":"e1","configurable":true,"client":"web"}]}""")
+        assertEquals("web", engramory.rows.single().client)
+        assertTrue(engramory.webUi)
+        assertFalse("its tools still work", engramory.webOnly)
+        val market = RpcJson.decodeFromString(ExtPlugin.serializer(), """{"name":"dshmarket","status":"active","rows":[{"id":"ui","module":"dshmarket","client":"web"}]}""")
+        assertTrue(market.webOnly)
+        // Not running: tools / commands are unknown, so it is only marked as having web UI.
+        assertFalse(market.copy(status = ExtStatus.DISABLED).webOnly)
+        assertTrue(market.copy(status = ExtStatus.DISABLED).webUi)
+        val host = RpcJson.decodeFromString(ExtPlugin.serializer(), """{"name":"web-search","rows":[{"id":"w","module":"web-search"}]}""")
+        assertFalse(host.webUi)
+        assertFalse(ExtPlugin(name = "empty").webOnly)
+    }
+
     @Test fun `skills use the engine's source field`() {
         val s = RpcJson.decodeFromString(SkillList.serializer(), """{"skills":[{"name":"x","source":"plugin","enabled":true,"removable":false,"path":"/n/node_modules/p/skills/x"}]}""")
         assertEquals(SkillOrigin.PLUGIN, s.skills.single().origin)

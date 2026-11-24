@@ -488,3 +488,30 @@ test('manifest text: strings and locale maps are normalized to LocalizedText for
     assert.equal(localizedString(42, 'fallback'), 'fallback')
   } finally { if (saved === undefined) delete process.env.DSH_ANDROID_LOCALE; else process.env.DSH_ANDROID_LOCALE = saved }
 })
+
+test('rows with a browser face are told apart (#80/#88), pnpm layout included', async () => {
+  const { clientPlatform, clientPlatformOf, packageOfModule, hasPlainConfig } = await import('../packages/plugin-extensions/rows.js')
+  assert.equal(clientPlatform({ dsh: { client: { platform: 'web' } } }), 'web')
+  assert.equal(clientPlatform({ dsh: { bundle: {} } }), undefined)
+  assert.equal(clientPlatform(undefined), undefined)
+  assert.equal(packageOfModule('@scope/pkg/client'), '@scope/pkg')
+  assert.equal(packageOfModule('dsh-engramory'), 'dsh-engramory')
+  assert.equal(packageOfModule('cordis:timer'), undefined)
+  assert.equal(packageOfModule('./local'), undefined)
+  const profile = tmp()
+  const write = (dir, json) => { mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, 'package.json'), JSON.stringify(json)) }
+  // The bundle itself is dual-face (top level); its UI dependency sits beside it in .pnpm.
+  write(join(profile, 'node_modules', 'dsh-engramory'), { name: 'dsh-engramory', dsh: { client: { platform: 'web' } } })
+  const store = join(profile, 'node_modules', '.pnpm', 'b@1', 'node_modules')
+  write(join(store, 'b'), { name: 'b' })
+  write(join(store, '@x', 'ui'), { name: '@x/ui', dsh: { client: { platform: 'web', inject: [] } } })
+  write(join(store, 'host-only'), { name: 'host-only' })
+  assert.equal(clientPlatformOf('dsh-engramory', profile, undefined), 'web')
+  assert.equal(clientPlatformOf('@x/ui', profile, join(store, 'b')), 'web')
+  assert.equal(clientPlatformOf('host-only', profile, join(store, 'b')), undefined)
+  assert.equal(clientPlatformOf('missing', profile, join(store, 'b')), undefined)
+  assert.equal(hasPlainConfig({ maxLines: 200 }), true)
+  assert.equal(hasPlainConfig({}), false)
+  assert.equal(hasPlainConfig([1]), false)
+  assert.equal(hasPlainConfig(undefined), false)
+})

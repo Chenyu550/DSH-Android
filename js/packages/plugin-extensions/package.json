@@ -20,6 +20,7 @@
     "updates.js",
     "skills.js",
     "mcp.js",
+    "rows.js",
     "pnpmfile.cjs",
     "native-rules.json"
   ],
