@@ -111,9 +111,9 @@ for p in "$JS_DIR"/patches/*.patch; do
     fi
     die "patch $name targets $target, which this dsh $DSH_VERSION tree does not have (upgrade? rebase or drop the patch)"
   done < <(sed -n 's#^+++ b/\([^[:space:]]*\).*#\1#p' "$p")
-  patch -p1 -d "$NM" --forward --batch --no-backup-if-mismatch --dry-run --silent < "$PATCH_TMP/$name" >/dev/null \
+  patch -p1 -d "$NM" --forward --batch --fuzz=0 --no-backup-if-mismatch --dry-run --silent < "$PATCH_TMP/$name" >/dev/null \
     || die "patch $name does not apply cleanly to dsh $DSH_VERSION"
-  patch -p1 -d "$NM" --forward --batch --no-backup-if-mismatch --silent < "$PATCH_TMP/$name"
+  patch -p1 -d "$NM" --forward --batch --fuzz=0 --no-backup-if-mismatch --silent < "$PATCH_TMP/$name"
 done
 find "$NM" \( -name '*.rej' -o -name '*.orig' \) -print -quit | grep -q . && die "patch left .rej/.orig files"
 

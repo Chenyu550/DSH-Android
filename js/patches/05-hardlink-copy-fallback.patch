@@ -90,8 +90,8 @@
  * chain; reads re-scan the artifact on demand and never observe a shorter log
 --- a/@deepseek-ai/dsh-fs-local/lib/index.js
 +++ b/@deepseek-ai/dsh-fs-local/lib/index.js
-@@ -7,7 +7,37 @@
- import { FileSystem, FsError, FsTargetKey, FsVersion } from "@deepseek-ai/dsh-fs";
+@@ -8,7 +8,37 @@
+ import { FileSystem, FsError, FsTargetKey, FsVersion, fsErrorFromErrno } from "@deepseek-ai/dsh-fs";
  import { randomUUID } from "node:crypto";
  import { createReadStream, realpath } from "node:fs";
 -import { chmod, link, lstat, mkdir, open, readFile, readdir, rename, rm, stat } from "node:fs/promises";
@@ -127,5 +127,5 @@
 +	}
 +}
  import { TextDecoder, promisify } from "node:util";
+ import { homedir } from "node:os";
  //#region lib/types/win32.js
- /**
