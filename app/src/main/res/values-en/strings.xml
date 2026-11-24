@@ -930,4 +930,11 @@
     <string name="upd_res_skipped">Skipped %1$s</string>
     <string name="upd_res_failed">Check failed: %1$s</string>
     <string name="upd_view">View</string>
+    <!-- App shortcuts (#82) -->
+    <string name="shortcut_new_short">New chat</string>
+    <string name="shortcut_new_long">New conversation</string>
+    <string name="shortcut_voice_short">Voice task</string>
+    <string name="shortcut_voice_long">Speak a task</string>
+    <string name="shortcut_screen_short">Send screen</string>
+    <string name="shortcut_screen_long">Send current screen</string>
 </resources>

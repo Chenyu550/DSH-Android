@@ -368,16 +368,10 @@ class FloatingBallService : Service() {
     /** Captures the main screen (screenshot without the ball, plus its text) and opens the quick panel with it attached. */
     private fun sendScreen() {
         if (view == null) return
-        val a11y = DshAccessibilityService.instance
-        if (a11y == null) {
-            Toast.makeText(this, R.string.ball_screen_needs_a11y, Toast.LENGTH_SHORT).show()
-            return open()
-        }
         scope.launch {
-            hidingOverlays {
-                ScreenContext.captureFromAccessibility()
-                // Android 10 has no accessibility screenshot, and secure pages refuse one: the screen text still goes along.
-                ScreenContext.attachShot(runCatching { a11y.capture().bitmap }.getOrNull())
+            if (!ScreenContext.captureScreen()) {
+                Toast.makeText(this@FloatingBallService, R.string.ball_screen_needs_a11y, Toast.LENGTH_SHORT).show()
+                return@launch open()
             }
             ActivityStarts.start(this@FloatingBallService, Intent(this@FloatingBallService, QuickActivity::class.java).putExtra(QuickActivity.EXTRA_SCREEN, true))
         }

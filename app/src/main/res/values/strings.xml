@@ -930,4 +930,11 @@
     <string name="upd_res_skipped">已跳过 %1$s</string>
     <string name="upd_res_failed">检查失败：%1$s</string>
     <string name="upd_view">查看</string>
+    <!-- App shortcuts (#82) -->
+    <string name="shortcut_new_short">新会话</string>
+    <string name="shortcut_new_long">新建会话</string>
+    <string name="shortcut_voice_short">语音任务</string>
+    <string name="shortcut_voice_long">说出一个任务</string>
+    <string name="shortcut_screen_short">发送屏幕</string>
+    <string name="shortcut_screen_long">发送当前屏幕</string>
 </resources>

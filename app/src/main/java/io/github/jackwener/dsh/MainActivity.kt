@@ -84,6 +84,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var updater: io.github.jackwener.dsh.core.update.AppUpdater
     @Inject lateinit var sessions: io.github.jackwener.dsh.core.session.SessionStore
     private var pendingSession by mutableStateOf<String?>(null)
+    /** EXTRA_NEW_SESSION (the 新会话 app shortcut): home on a new conversation. */
+    private var pendingNew by mutableStateOf(false)
     /** Settings section to open (EXTRA_SECTION, e.g. the quick panel's 登录 / 添加 API Key / 打开自检). */
     private var pendingSection by mutableStateOf<String?>(null)
     private var navReady by mutableStateOf(false)
@@ -99,6 +101,7 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) {
             pendingSession = sessionOf(intent)
             pendingSection = intent.getStringExtra(EXTRA_SECTION)
+            pendingNew = intent.getBooleanExtra(EXTRA_NEW_SESSION, false)
         }
         handleAppLink(intent)
         if (savedInstanceState == null) handleExtensionShare(intent)
@@ -141,6 +144,7 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         pendingSession = sessionOf(intent)
         pendingSection = intent.getStringExtra(EXTRA_SECTION)
+        pendingNew = intent.getBooleanExtra(EXTRA_NEW_SESSION, false)
         handleAppLink(intent)
         handleExtensionShare(intent)
     }
@@ -194,6 +198,9 @@ class MainActivity : ComponentActivity() {
             // Never a plugin's background session (#43; e.g. an old notification of one): home stays as it is.
             pendingSession?.let { id -> if (!sessions.isForeign(id)) home.open(id); nav.toHome(); pendingSession = null }
         }
+        LaunchedEffect(pendingNew) {
+            if (pendingNew) { home.newSession(null); nav.toHome(); pendingNew = false }
+        }
         LaunchedEffect(pendingSection) {
             // Ignored during onboarding (home is not on the stack yet), as before.
             pendingSection?.let { sec -> pendingSection = null; nav.openSettings(sec) }
@@ -234,5 +241,7 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_SECTION = "settings_section"
         /** The ongoing notifications' tap (Notifications.openRunning): the conversation running at tap time. */
         const val EXTRA_OPEN_RUNNING = "open_running"
+        /** Open home on a new conversation (the 新会话 app shortcut). */
+        const val EXTRA_NEW_SESSION = "new_session"
     }
 }

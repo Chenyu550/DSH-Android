@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App shortcuts (#82): launcher long-press, and system pickers of an app's shortcuts (e.g. vivo's Quick
+     action button → app services). All go through ShortcutActivity, which forwards to the floating ball's
+     entry points. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="new_session"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_new"
+        android:shortcutShortLabel="@string/shortcut_new_short"
+        android:shortcutLongLabel="@string/shortcut_new_long">
+        <intent
+            android:action="io.github.jackwener.dsh.shortcut.NEW_SESSION"
+            android:targetPackage="io.github.jackwener.dsh"
+            android:targetClass="io.github.jackwener.dsh.feature.quick.ShortcutActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="voice_task"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_voice"
+        android:shortcutShortLabel="@string/shortcut_voice_short"
+        android:shortcutLongLabel="@string/shortcut_voice_long">
+        <intent
+            android:action="io.github.jackwener.dsh.shortcut.VOICE"
+            android:targetPackage="io.github.jackwener.dsh"
+            android:targetClass="io.github.jackwener.dsh.feature.quick.ShortcutActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="send_screen"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_screen"
+        android:shortcutShortLabel="@string/shortcut_screen_short"
+        android:shortcutLongLabel="@string/shortcut_screen_long">
+        <intent
+            android:action="io.github.jackwener.dsh.shortcut.SEND_SCREEN"
+            android:targetPackage="io.github.jackwener.dsh"
+            android:targetClass="io.github.jackwener.dsh.feature.quick.ShortcutActivity" />
+    </shortcut>
+</shortcuts>

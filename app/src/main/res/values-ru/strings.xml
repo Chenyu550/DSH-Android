@@ -915,4 +915,11 @@
     <string name="upd_res_skipped">%1$s пропущена</string>
     <string name="upd_res_failed">Не удалось проверить: %1$s</string>
     <string name="upd_view">Открыть</string>
+    <!-- App shortcuts (#82) -->
+    <string name="shortcut_new_short">Новый чат</string>
+    <string name="shortcut_new_long">Новый разговор</string>
+    <string name="shortcut_voice_short">Голосом</string>
+    <string name="shortcut_voice_long">Задача голосом</string>
+    <string name="shortcut_screen_short">Экран</string>
+    <string name="shortcut_screen_long">Отправить текущий экран</string>
 </resources>

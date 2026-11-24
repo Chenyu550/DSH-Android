@@ -129,6 +129,7 @@ Shizuku 用户服务（shell uid，可选）：ShellUserService
 - 快捷设置磁贴 `QuickTileService`。
 - 分享：`SEND`/`SEND_MULTIPLE`，文字、图片和文件放进输入框，由用户确认后发送。
 - `io.github.jackwener.dsh.RUN_TASK`（extra `task`）：受“允许其他 App 调用”开关控制，默认关闭，关闭时提示并拒绝；不附带屏幕内容。
+- 应用快捷方式（静态，`res/xml/shortcuts.xml`）：长按图标，或在系统列出“应用服务”的地方绑定（如 vivo 侧边快捷键 → 打开应用服务）。新会话（主界面上新建）、语音任务（面板并开始听写）、发送当前屏幕（同悬浮球双击）。都经过无窗口的 `ShortcutActivity`：静态快捷方式以 `NEW_TASK | CLEAR_TASK` 启动，直接指向主界面或面板会清掉它们的任务栈；没有窗口也不抢焦点，截到的是用户原来的页面。
 
 面板顶部显示“当前页面”标签，可以取消附带。普通唤起会接着用最近的会话：面板里最近用的，或离开主界面时正在看的（仍在运行，或 10 分钟内离开），否则新建。
 
