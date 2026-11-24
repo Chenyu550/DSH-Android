@@ -38,6 +38,8 @@
     <string name="ext_market_error">Couldn\'t read the index: %s</string>
     <string name="ext_market_error_list">Couldn\'t read the index list</string>
     <string name="ext_market_incompatible">Needs a newer app</string>
+    <string name="ext_market_web_only">Web app only</string>
+    <string name="ext_market_web_only_detail">Needs services only the DSH web app has (%1$s); the phone app has none of them, so it cannot run here.</string>
     <string name="ext_status_active">Running</string>
     <string name="ext_count_tools">%d tools</string>
     <string name="ext_count_skills">%d skills</string>
@@ -57,6 +59,7 @@
     <string name="ext_source_tarball">Tarball link</string>
     <string name="ext_update_to">Update to %s</string>
     <string name="ext_update_needs_app">Version %s needs a newer app</string>
+    <string name="ext_update_needs_engine">Version %1$s needs engine %2$s; wait for an app update</string>
     <string name="ext_uninstall">Uninstall</string>
     <string name="ext_uninstall_confirm">Uninstall %s? Data the plugin saved on its own is kept.</string>
     <string name="ext_disable">Turn off</string>

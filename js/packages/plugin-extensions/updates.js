@@ -23,7 +23,21 @@ export async function latestOf(name, registries, { fetchImpl = fetch, timeoutMs 
 }
 
 export function compatible(manifest, exemptions = {}) {
-  try { const issue = evaluatePluginCompatibility(manifest, exemptions); return issue === undefined || issue.exempted } catch { return false }
+  return compatibility(manifest, exemptions).compatible
+}
+
+/**
+ * Whether this engine can run [manifest], and when not, the dsh range it asks for (#79: the app
+ * names it, "needs engine >=0.2.2"): `engines.dsh`, else the first unmet requirement.
+ */
+export function compatibility(manifest, exemptions = {}) {
+  try {
+    const issue = evaluatePluginCompatibility(manifest, exemptions)
+    if (issue === undefined || issue.exempted) return { compatible: true }
+    const req = issue.requirements ?? {}
+    const range = req['engines.dsh'] ?? Object.values(req).find(v => typeof v === 'string')
+    return { compatible: false, ...typeof range === 'string' ? { range } : {} }
+  } catch { return { compatible: false } }
 }
 
 /** Compare dotted versions (prerelease ignored for ordering ties). */

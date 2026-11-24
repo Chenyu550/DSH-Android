@@ -12,6 +12,8 @@ current upstream release; the line numbers in our patches are against the versio
 | 17 `llm-lite-reasoning-echo-gateway-compat` | `@snnh/dsh-llm-service-lite` 0.2.1 | snnh/dsh-llm-service-lite | no | yes; best split into 3 PRs (below) |
 | 18 `llm-lite-route-headers-model-access` | `@snnh/dsh-llm-service-lite` 0.2.1 | snnh/dsh-llm-service-lite | `userAgent` default is ours; the rest no | yes, as 2 PRs (below) |
 | 22 `llm-lite-declared-reasoning` | `@snnh/dsh-llm-service-lite` 0.2.1 | snnh/dsh-llm-service-lite | no | yes, as a semantics question first (below) |
+| 23 `llm-lite-responses-encrypted-reasoning` | `@snnh/dsh-llm-service-lite` 0.2.1 | snnh/dsh-llm-service-lite | no | yes, as is (below) |
+| 24 `proxy-direct-fallback` | `@deepseek-ai/dsh-http-proxy` + `@snnh/dsh-llm-service-lite` | DeepSeek Harness; snnh/dsh-llm-service-lite | the fallback mirrors Android's HTTP stack; the cause text is general | the cause text yes; the fallback as a question (desktop proxies rarely die silently) |
 
 Only patch 15 targets dsh itself. 14, 16, 17 and 18 target the community adapter; dsh's own
 `dsh-llm-deepseek` adapter is not patched. One dsh-side note belongs with 17 (see "dsh core" below).
@@ -232,6 +234,27 @@ level); a style with no levels means none. Undeclared profiles behave as before.
 > the control off because the schema turns an absent list into `[]` too. Proposal: treat any declared
 > level list or `thinkingStyle` as the model's whole reasoning declaration. Tests:
 > `js/test/provider-reasoning.test.mjs`.
+
+## 23: encrypted reasoning replay on the Responses wire by default
+
+**What it changes.** OpenAI reasoning models on `openai-responses` replay their reasoning item
+verbatim unless the profile sets `responsesEncryptedReplay: false`; `reasoning.encrypted_content` is
+asked for with or without a chosen level; a reasoning item with an empty summary is kept (as an empty
+reasoning block) for its payload; a turn whose reasoning item is not replayed goes out without the
+provider's item ids.
+
+**Draft issue** (snnh/dsh-llm-service-lite):
+
+> **openai-responses: tool follow-ups to OpenAI reasoning models fail with "function_call provided
+> without its required reasoning item"**
+>
+> Without an explicit `responsesEncryptedReplay` the adapter never replays reasoning items, but it
+> still sends the `fc_…` ids of earlier calls, which the API refuses without their `rs_…` items. The
+> payload is also requested only when a level is chosen, and `writeItem` drops a reasoning item whose
+> summary is empty together with its `encrypted_content`. Proposal: default the capability on for the
+> OpenAI reasoning families on this protocol, always request the payload when it is on, keep
+> empty-summary items that carry one, and omit item ids for turns whose reasoning is not replayed
+> (history written before the fix keeps working). Test: `js/test/provider-protocol.test.mjs` (#84).
 
 ## Not upstream material
 

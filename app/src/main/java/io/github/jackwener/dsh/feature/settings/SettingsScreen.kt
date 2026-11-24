@@ -1,6 +1,7 @@
 package io.github.jackwener.dsh.feature.settings
 
 import android.content.Intent
+import io.github.jackwener.dsh.core.engine.EngineRuntimeEnv
 import io.github.jackwener.dsh.core.platform.AppLanguage
 import android.net.Uri
 import android.provider.Settings
@@ -304,6 +305,7 @@ private fun ModelSection(vm: SettingsViewModel, onProvider: (String) -> Unit) {
     }
     ProvidersCard(vm, onProvider)
     DefaultModelCard(vm)
+    TitleCard(vm)
 }
 
 @Composable
@@ -383,7 +385,13 @@ private fun UsageSection(vm: SettingsViewModel) {
             Stat(stringResource(R.string.usage_cached), Fmt.tokens(today?.cachedTokens ?: 0))
             Stat(stringResource(R.string.usage_output), Fmt.tokens(today?.outputTokens ?: 0))
         }
-        today?.let { cacheHitRate(it.cachedTokens, it.inputTokens) }?.let { SettingsRow(stringResource(R.string.usage_cache_hit), Fmt.percent(it)) }
+        // Overall (every recorded day) and today's, labelled as such (#76: today's alone read as the overall rate).
+        val total by vm.usageTotal.collectAsStateWithLifecycle()
+        val overallHit = total?.let { cacheHitRate(it.cachedTokens, it.inputTokens) }
+        val todayHit = today?.let { cacheHitRate(it.cachedTokens, it.inputTokens) }
+        if (overallHit != null || todayHit != null) SettingsRow(stringResource(R.string.usage_cache_hit), listOfNotNull(
+            overallHit?.let { stringResource(R.string.usage_cache_hit_overall, Fmt.percent(it)) },
+            todayHit?.let { stringResource(R.string.usage_cache_hit_today, Fmt.percent(it)) }).joinToString(" · "))
         if (s.dailyTokenLimit > 0) SettingsRow(stringResource(R.string.daily_limit), Fmt.tokens(s.dailyTokenLimit))
     }
     SettingsGroupTitle(stringResource(R.string.usage_30d))
@@ -476,6 +484,7 @@ private fun AboutSection(vm: SettingsViewModel) {
             leading = { io.github.jackwener.dsh.core.designsystem.Whale(width = 22.dp) })
         val s by vm.settings.collectAsStateWithLifecycle()
         io.github.jackwener.dsh.feature.update.UpdateSettingsRows(vm.updater, s.autoUpdateCheck, { vm.setAutoUpdateCheck(it) })
+        vm.engineVersion?.let { SettingsRow(stringResource(R.string.engine_version), "DeepSeek Harness $it") }
         SettingsRow(stringResource(R.string.engine), when (val e = engine) {
             EngineState.Ready -> stringResource(R.string.engine_ready); EngineState.Starting -> stringResource(R.string.starting_engine)
             EngineState.Stopped -> stringResource(R.string.engine_idle); is EngineState.Failed -> e.message.take(300)
@@ -485,6 +494,7 @@ private fun AboutSection(vm: SettingsViewModel) {
         val ext: io.github.jackwener.dsh.feature.extensions.ExtensionsViewModel = hiltViewModel()
         SettingsRow(stringResource(R.string.ext_safe_mode_start), stringResource(R.string.ext_safe_mode_start_desc),
             trailing = { DButton(stringResource(R.string.ext_safe_mode_start), { ext.startSafeMode(); vm.runDoctor() }, variant = BtnVariant.Outline, size = BtnSize.Sm) })
+        EngineOptionRows(vm)
         SettingsRow(stringResource(R.string.about_disclaimer_title), stringResource(R.string.about_disclaimer), divider = true)
         // Attribution for the bundled official Shizuku APK (Apache-2.0); tap shows the license shipped with it.
         val shizukuLicense = remember { runCatching { vm.context.assets.open("shizuku/LICENSE").bufferedReader().use { it.readText() } }.getOrNull() }
@@ -524,6 +534,35 @@ private fun AboutSection(vm: SettingsViewModel) {
     vm.lastEngineExit?.let { record ->
         SettingsGroupTitle(stringResource(R.string.engine_last_exit))
         CodeCard(record, label = "exit / tombstone", maxHeight = 320.dp)
+    }
+}
+
+/**
+ * 兼容模式 (`--jitless`, on by itself after repeated native crashes) and 引擎启动参数 (#66), an
+ * advanced field behind a row: the options are checked as typed and a refused one is named.
+ * Both apply when the engine next starts (an idle engine restarts for them).
+ */
+@Composable
+private fun EngineOptionRows(vm: SettingsViewModel) {
+    val c = Dsh.colors
+    val s by vm.settings.collectAsStateWithLifecycle()
+    val auto = s.engineJitless == null && s.engineJitlessAutoAt > 0
+    val desc = stringResource(R.string.engine_jitless_desc) + if (auto) "\n" + stringResource(R.string.engine_jitless_auto,
+        java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(s.engineJitlessAutoAt))) else ""
+    SettingsRow(stringResource(R.string.engine_jitless), desc, trailing = { DSwitch(s.engineJitlessOn, { vm.setEngineJitless(it) }) })
+    var open by rememberSaveable { mutableStateOf(s.engineNodeOptions.isNotEmpty()) }
+    SettingsRow(stringResource(R.string.set_engine_options), s.engineNodeOptions.ifEmpty { stringResource(R.string.set_engine_options_none) },
+        onClick = { open = !open }, trailing = { DIcon(if (open) R.drawable.dsw_chevron_up_outline else R.drawable.dsw_chevron_down_outline, size = 14.dp, tint = c.labelTertiary) })
+    if (open) Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        var text by remember(s.engineNodeOptions) { mutableStateOf(s.engineNodeOptions) }
+        val rejected = EngineRuntimeEnv.rejectedNodeOptions(text)
+        Text(stringResource(R.string.set_engine_options_desc), style = DshType.xxs12, color = c.labelTertiary)
+        DInput(text, { text = it }, placeholder = "--max-old-space-size=1024")
+        if (rejected.isNotEmpty()) Text(stringResource(R.string.set_engine_options_refused, rejected.joinToString(" ")), style = DshType.xxs12, color = c.error)
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+            DButton(stringResource(R.string.save), { vm.setEngineNodeOptions(text) }, size = BtnSize.Sm,
+                enabled = rejected.isEmpty() && text.trim() != s.engineNodeOptions)
+        }
     }
 }
 

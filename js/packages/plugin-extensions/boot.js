@@ -62,7 +62,7 @@ export function writeJson(file, value) {
   renameSync(tmp, file)
 }
 
-const EMPTY_STATE = () => ({ version: 1, suspended: {}, safeMode: { active: false, savedBundles: [] }, installedFrom: {}, askBeforeCall: [], pendingRemoval: [], updates: { checkedAt: 0, latest: {} }, notices: [] })
+const EMPTY_STATE = () => ({ version: 1, suspended: {}, safeMode: { active: false, savedBundles: [] }, installedFrom: {}, askBeforeCall: [], pendingRemoval: [], updates: { checkedAt: 0, latest: {} }, notices: [], webOnly: {} })
 
 export function readState(p = paths()) {
   const s = { ...EMPTY_STATE(), ...readJson(p.state, {}) }

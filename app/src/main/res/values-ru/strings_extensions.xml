@@ -38,6 +38,8 @@
     <string name="ext_market_error">Не удалось прочитать индекс: %s</string>
     <string name="ext_market_error_list">Не удалось загрузить список индексов</string>
     <string name="ext_market_incompatible">Нужно обновить App</string>
+    <string name="ext_market_web_only">Только веб-версия</string>
+    <string name="ext_market_web_only_detail">Нужны службы, которые есть только в веб-версии DSH (%1$s); в приложении для телефона их нет, поэтому плагин здесь не работает.</string>
     <string name="ext_status_active">Работает</string>
     <string name="ext_count_tools">Инструментов: %d</string>
     <string name="ext_count_skills">Навыков: %d</string>
@@ -57,6 +59,7 @@
     <string name="ext_source_tarball">Ссылка на архив</string>
     <string name="ext_update_to">Обновить до %s</string>
     <string name="ext_update_needs_app">Новая версия %s требует обновить App</string>
+    <string name="ext_update_needs_engine">Версия %1$s требует движок %2$s — дождитесь обновления App</string>
     <string name="ext_uninstall">Удалить</string>
     <string name="ext_uninstall_confirm">Удалить %s? Сохранённые плагином данные останутся.</string>
     <string name="ext_disable">Отключить</string>

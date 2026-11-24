@@ -155,6 +155,15 @@
     - id: android-mode
       name: '@dsh-android/plugin-mode'
 
+    # Automatic conversation titles (#89, plugin-guard session-title.js): after a conversation's first
+    # reply a model names it (dsh-base's own `session-title-llm` provider stays off, as dsh-sdk-app
+    # leaves it). The app's settings layer replaces this row: `disabled` when 自动生成对话标题 is off,
+    # `config` = 标题模型 (none: the conversation's) and 推理等级.
+    - id: android-session-title
+      name: '@dsh-android/plugin-guard/session-title'
+      config:
+        reasoning: lowest
+
     # DeepSeek account login. dsh-base mounts the account provider
     # (`deepseek-account`, OAuth + PKCE against platform.deepseek.com) and the
     # `deepseek-account` model route; this row adds the loopback callback

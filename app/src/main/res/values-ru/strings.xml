@@ -402,6 +402,8 @@
     <string name="usage_input">Ввод</string>
     <string name="usage_cached">Из кеша</string>
     <string name="usage_cache_hit">Попадания в кеш</string>
+    <string name="usage_cache_hit_overall">Всего %1$s</string>
+    <string name="usage_cache_hit_today">Сегодня %1$s</string>
     <string name="usage_cache_hit_short">кеш %1$s</string>
     <string name="usage_output">Вывод</string>
     <string name="usage_reasoning">Рассуждения</string>
@@ -721,6 +723,7 @@
     <string name="prov_add_model">Ввести ID модели вручную</string>
     <string name="prov_add_model_btn">Добавить</string>
     <string name="prov_delete">Удалить провайдера</string>
+    <string name="prov_delete_confirm">Удалить провайдера «%1$s»? Вместе с ним удалятся адрес, ключ, заголовки и все настройки моделей.</string>
     <string name="prov_err_url">Укажи адрес интерфейса, начиная с https:// или http://</string>
     <string name="prov_err_key">Укажи API Key</string>
     <string name="prov_err_models">Отметь хотя бы одну модель</string>
@@ -733,6 +736,7 @@
     <string name="prov_model_missing">Нет в ответе</string>
     <string name="prov_model_limits">Настроить контекст и вывод для этой модели</string>
     <string name="prov_model_limits_hint">Действует только для этой модели; если оставить пусто — берётся настройка выше / ответ интерфейса / значение по умолчанию</string>
+    <string name="prov_model_remove">Удалить эту модель</string>
     <string name="prov_images">Ввод изображений</string>
     <string name="prov_images_on">Поддерживает изображения</string>
     <string name="prov_images_off">Только текст</string>
@@ -922,4 +926,21 @@
     <string name="shortcut_voice_long">Задача голосом</string>
     <string name="shortcut_screen_short">Экран</string>
     <string name="shortcut_screen_long">Отправить текущий экран</string>
+    <string name="set_engine_options">Параметры запуска движка (расширенные)</string>
+    <string name="set_engine_options_desc">Дополнительные флаги Node через пробел, например --max-old-space-size=1024. Неверный флаг может помешать запуску движка; сохранённые флаги применяются при перезапуске простаивающего движка.</string>
+    <string name="set_engine_options_none">Не заданы</string>
+    <string name="set_engine_options_refused">Не принимается: %1$s (флаги, загружающие код, открывающие порт отладчика или заставляющие Node делать что-то кроме запуска движка)</string>
+    <string name="engine_jitless">Режим совместимости (без JIT)</string>
+    <string name="engine_jitless_desc">Включите, если движок на этом устройстве постоянно падает (SIGSEGV, часто на Android 16): V8 работает без JIT-компилятора — стабильнее, но медленнее, а функции, которым нужен WebAssembly (например, обработка изображений во вложениях), недоступны. Применяется при перезапуске простаивающего движка.</string>
+    <string name="engine_jitless_auto">Включён автоматически %1$s после повторных сбоев движка; если выключить, автоматически больше не включится.</string>
+    <string name="engine_version">Версия движка</string>
+    <string name="title_group">Названия диалогов</string>
+    <string name="title_auto">Создавать названия автоматически</string>
+    <string name="title_auto_desc">После первого ответа в новом диалоге модель даёт ему короткое название по первому сообщению и началу ответа (на языке диалога). Работает в фоне и не замедляет диалог; при ошибке название не меняется. Переименованный вами диалог не перезаписывается.</string>
+    <string name="title_model">Модель для названий</string>
+    <string name="title_model_follow">Как в диалоге</string>
+    <string name="title_effort">Уровень рассуждений</string>
+    <string name="title_effort_lowest">Авто (выкл. или минимальный)</string>
+    <string name="title_effort_conversation">Как в диалоге</string>
+    <string name="title_model_hint">Рекомендуется отдельная лёгкая модель с низким уровнем рассуждений, чтобы основная модель не тратила токены на названия.</string>
 </resources>

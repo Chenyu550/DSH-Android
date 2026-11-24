@@ -87,7 +87,13 @@ fun SkillsTab(vm: ExtensionsViewModel) {
         SettingsGroupTitle(stringResource(R.string.ext_skills_others))
         SettingsCard {
             others.forEachIndexed { i, s ->
-                SettingsRow(s.name, s.description.take(140).ifEmpty { null }, divider = i > 0, trailing = { Tag(originLabel(s), Tone.Neutral) })
+                SettingsRow(s.name, s.description.take(140).ifEmpty { null }, divider = i > 0, trailing = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Tag(originLabel(s), Tone.Neutral)
+                        // Installed into the app's own .agents/skills (by the agent, `npx skills add`): deletable too (#76).
+                        if (s.removable) IconBtn(R.drawable.dsw_trash_outline, { confirmDelete = s.name }, contentDescription = stringResource(R.string.delete), size = 36.dp)
+                    }
+                })
             }
         }
     }

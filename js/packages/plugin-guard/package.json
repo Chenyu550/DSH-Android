@@ -12,9 +12,11 @@
     "./experience": "./experience.js",
     "./continuation": "./continuation.js",
     "./session-model": "./session-model.js",
+    "./observations": "./observations.js",
+    "./session-title": "./session-title.js",
     "./package.json": "./package.json"
   },
-  "files": ["index.js", "hardline.js", "experience.js", "continuation.js", "session-model.js", "package.json"],
+  "files": ["index.js", "hardline.js", "experience.js", "continuation.js", "session-model.js", "observations.js", "session-title.js", "package.json"],
   "engines": {
     "dsh": "0.2.1-rc.5"
   }

@@ -198,7 +198,7 @@ class HomeViewModel @Inject constructor(
 
     fun newSession(prefillText: String?) { newSession(); prefill.value = prefillText }
 
-    fun rename(id: String, title: String) = viewModelScope.launch { store.rename(id, title) }
+    fun rename(id: String, title: String) = viewModelScope.launch { store.renameByUser(id, title) }
     fun pin(id: String, pinned: Boolean) = viewModelScope.launch { store.setPinned(id, pinned) }
     fun mute(id: String, muted: Boolean) = viewModelScope.launch { store.setMuted(id, muted) }
     fun archive(id: String, archived: Boolean) = viewModelScope.launch {

@@ -405,6 +405,8 @@
     <string name="usage_input">Input</string>
     <string name="usage_cached">Cache read</string>
     <string name="usage_cache_hit">Cache hit rate</string>
+    <string name="usage_cache_hit_overall">Overall %1$s</string>
+    <string name="usage_cache_hit_today">Today %1$s</string>
     <string name="usage_cache_hit_short">cache %1$s</string>
     <string name="usage_output">Output</string>
     <string name="usage_reasoning">Reasoning</string>
@@ -724,6 +726,7 @@
     <string name="prov_add_model">Type a model ID</string>
     <string name="prov_add_model_btn">Add</string>
     <string name="prov_delete">Delete provider</string>
+    <string name="prov_delete_confirm">Delete provider “%1$s”? Its address, key, headers and every model setting go with it.</string>
     <string name="prov_err_url">Enter a base URL starting with https:// or http://</string>
     <string name="prov_err_key">Enter the API key</string>
     <string name="prov_err_models">Check at least one model</string>
@@ -736,6 +739,7 @@
     <string name="prov_model_missing">Not returned by endpoint</string>
     <string name="prov_model_limits">Set this model\'s context and output</string>
     <string name="prov_model_limits_hint">This model only; blank falls back to the setting above / endpoint value / default</string>
+    <string name="prov_model_remove">Remove this model</string>
     <string name="prov_images">Image input</string>
     <string name="prov_images_on">Images</string>
     <string name="prov_images_off">Text only</string>
@@ -937,4 +941,21 @@
     <string name="shortcut_voice_long">Speak a task</string>
     <string name="shortcut_screen_short">Send screen</string>
     <string name="shortcut_screen_long">Send current screen</string>
+    <string name="set_engine_options">Engine launch options (advanced)</string>
+    <string name="set_engine_options_desc">Extra Node startup flags, space-separated, e.g. --max-old-space-size=1024. An invalid flag can keep the engine from starting; saved flags apply when the idle engine restarts.</string>
+    <string name="set_engine_options_none">None</string>
+    <string name="set_engine_options_refused">Not accepted: %1$s (flags that load code, open a debugger port or make Node do something other than run the engine)</string>
+    <string name="engine_jitless">Compatibility mode (no JIT)</string>
+    <string name="engine_jitless_desc">Turn on if the engine keeps crashing on this device (SIGSEGV, common on Android 16): V8 runs without its JIT compiler, more stable but slower, and features that need WebAssembly (such as image attachment processing) are unavailable. Applies when the idle engine restarts.</string>
+    <string name="engine_jitless_auto">Turned on automatically %1$s after repeated engine crashes; once you turn it off it stays off.</string>
+    <string name="engine_version">Engine version</string>
+    <string name="title_group">Conversation titles</string>
+    <string name="title_auto">Auto-generate titles</string>
+    <string name="title_auto_desc">After a new conversation\'s first reply, a model names it in a few words from the first message and the start of the reply (in the conversation\'s language). It runs in the background and never slows the conversation; on failure the title stays as it was. A conversation you renamed is never overwritten.</string>
+    <string name="title_model">Title model</string>
+    <string name="title_model_follow">Same as the conversation</string>
+    <string name="title_effort">Effort</string>
+    <string name="title_effort_lowest">Auto (off or lowest)</string>
+    <string name="title_effort_conversation">Same as the conversation</string>
+    <string name="title_model_hint">A separate light model at a low effort is recommended, so your main model does not spend tokens on titles.</string>
 </resources>

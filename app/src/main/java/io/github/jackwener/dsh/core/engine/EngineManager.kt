@@ -123,6 +123,12 @@ class EngineManager @Inject constructor(
     @Volatile private var startedTz: String = TimeZone.getDefault().id
     /** DSH_ANDROID_LOCALE the running process got (approval texts, account pages, extension labels follow the app language). */
     @Volatile private var startedLocale: String = Locale.getDefault().toLanguageTag()
+    /** Android's proxy when the running engine started (EngineProxy: its environment is read once, at process start). */
+    @Volatile private var startedProxy: EngineProxy.Proxy? = null
+    /** 兼容模式 / 引擎启动参数 the running engine started with (#66). */
+    @Volatile private var startedNodeOptions: String = ""
+    /** Native crashes (SIGSEGV…) of recent engine processes, for 兼容模式's automatic switch (#66). */
+    private val nativeCrashes = ArrayDeque<Long>()
     /** Whether an SDK session was opened in this generation (then a route change needs a restart). */
     @Volatile private var sessionsOpened = false
     private var death: CompletableDeferred<Unit>? = null
@@ -151,7 +157,10 @@ class EngineManager @Inject constructor(
         renderProfilePatch(st.providers, webSearch(st, hasKey), io.github.jackwener.dsh.core.provider.appProductToken(io.github.jackwener.dsh.BuildConfig.VERSION_NAME),
             // Plugins' own sessions take the default (the stored levels: the patch must not depend on what this process reported).
             defaultModel = SessionModels.route(SessionModels.default(st), st, st.reasoningCatalog, deepSeekRoute(hasKey))),
-        io.github.jackwener.dsh.core.extensions.ExtensionsEngineInputs.patchRows(st.mcpServers, File(context.filesDir, "dsh-home").path))
+        io.github.jackwener.dsh.core.extensions.ExtensionsEngineInputs.patchRows(st.mcpServers, File(context.filesDir, "dsh-home").path) +
+            // 自动生成对话标题 / 标题模型 (#89).
+            io.github.jackwener.dsh.core.session.SessionTitles.patchRow(st,
+                io.github.jackwener.dsh.core.session.SessionTitles.pinned(st)?.let { SessionModels.route(it, st, st.reasoningCatalog, deepSeekRoute(hasKey)) }))
 
     /** Provider keys and secret header values, plus the extensions' environment (plugin registries, MCP header secrets): env var name → value. */
     private fun providerKeys(st: io.github.jackwener.dsh.core.data.Settings): Map<String, String> {
@@ -203,6 +212,10 @@ class EngineManager @Inject constructor(
                 TimeZone.getDefault().id != startedTz -> { Log.i(TAG, "time zone changed: restarting engine"); shutdownLocked(); null }
                 // The app language changed (设置 → 语言, or the system's per-app language): same, when idle.
                 Locale.getDefault().toLanguageTag() != startedLocale -> { Log.i(TAG, "language changed: restarting engine"); shutdownLocked(); null }
+                // The system / Wi-Fi / VPN proxy changed (#75): the engine routes by the one it started with.
+                EngineRuntimeEnv.systemProxy(context) != startedProxy -> { Log.i(TAG, "proxy changed: restarting engine"); shutdownLocked(); null }
+                // 兼容模式 / 引擎启动参数 changed (#66): Node reads its options at start.
+                st.engineExtraNodeOptions != startedNodeOptions -> { Log.i(TAG, "node options changed: restarting engine"); shutdownLocked(); null }
                 // Providers / keys / web search changed: only a new process reads them.
                 profileFingerprint(st, hasKey) != activeFingerprint -> { Log.i(TAG, "model providers changed: restarting engine"); shutdownLocked(); null }
                 want == activeRoute -> peer
@@ -288,7 +301,7 @@ class EngineManager @Inject constructor(
             val tBound = System.currentTimeMillis()
             val fingerprint = profileFingerprint(st, hasKey)
             withContext(Dispatchers.IO) { writeProfilePatch(profilePatch(st, hasKey)) }
-            val handles = withContext(Dispatchers.IO) { service.start(environment(secrets.read(), providerKeys(st))) }
+            val handles = withContext(Dispatchers.IO) { service.start(environment(secrets.read(), providerKeys(st), st.engineExtraNodeOptions)) }
             val sdkIn = ParcelFileDescriptor.AutoCloseOutputStream(handles.pfd("sdk_in"))
             val sdkOut = ParcelFileDescriptor.AutoCloseInputStream(handles.pfd("sdk_out"))
             val bridgeFd = handles.pfd("bridge")
@@ -440,8 +453,28 @@ class EngineManager @Inject constructor(
             // 引擎常驻: come back after the same backoff even when no conversation was running.
             if (retryInMs != null) scope.launch { delay(retryInMs); keepAlive() }
             delay(2_000) // let the system record the exit reason
-            EngineDiagnostics.collectExitInfo(context)
+            noteNativeCrashes(EngineDiagnostics.collectExitInfo(context))
         }
+    }
+
+    /**
+     * 兼容模式, automatic (#66): V8's JIT crashing on a device (Android 16 + PAC: a bare SIGSEGV
+     * right after a start, two or three in a row) leaves no stack to fix; `--jitless` is the known
+     * way around it. After [JIT_CRASHES] native crashes within [RestartPolicy.WINDOW_MS] the next
+     * start runs without the JIT, unless the user has chosen either way (设置 → 关于 shows it).
+     */
+    private suspend fun noteNativeCrashes(count: Int) {
+        if (count <= 0) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        val recent = synchronized(nativeCrashes) {
+            repeat(count) { nativeCrashes.addLast(now) }
+            while (nativeCrashes.isNotEmpty() && nativeCrashes.first() < now - RestartPolicy.WINDOW_MS) nativeCrashes.removeFirst()
+            nativeCrashes.size
+        }
+        val st = settings.current()
+        if (recent < JIT_CRASHES || st.engineJitless != null || st.engineJitlessOn) return
+        Log.w(TAG, "$recent native engine crashes: turning on 兼容模式 (--jitless)")
+        settings.setEngineJitlessAuto(System.currentTimeMillis())
     }
 
     private fun teardown(retire: Int) {
@@ -506,9 +539,11 @@ class EngineManager @Inject constructor(
         check(tmp.renameTo(f)) { "could not write ${f.path}" }
     }
 
-    private fun environment(apiKey: String?, providerKeys: Map<String, String>) = Bundle().apply {
+    private fun environment(apiKey: String?, providerKeys: Map<String, String>, extraNodeOptions: String) = Bundle().apply {
+        startedNodeOptions = extraNodeOptions
         startedTz = TimeZone.getDefault().id
         startedLocale = Locale.getDefault().toLanguageTag()
+        startedProxy = EngineRuntimeEnv.systemProxy(context)
         val files = context.filesDir
         putString("DSH_HOME", File(files, "dsh-home").path)
         putString("HOME", File(files, "home").path)
@@ -527,6 +562,8 @@ class EngineManager @Inject constructor(
         putString("TZ", startedTz)
         putString("DSH_ANDROID_TZ", startedTz)
         putString("NODE_OPTIONS", "--max-old-space-size=768")
+        // 兼容模式 / 引擎启动参数 (#66): merged by EngineRuntimeEnv into NODE_OPTIONS and argv.
+        if (extraNodeOptions.isNotBlank()) putString(EngineRuntimeEnv.EXTRA_OPTIONS_ENV, extraNodeOptions)
         putString("DSH_TELEMETRY_DISABLED", "1")
         putString("NARB_DISABLE_NATIVE_CACHE", "1")
         io.github.jackwener.dsh.core.extensions.SafeModeRequest.take(context, restarts.open)?.let { putString(io.github.jackwener.dsh.core.extensions.SafeModeRequest.ENV, it) }
@@ -538,5 +575,7 @@ class EngineManager @Inject constructor(
     private companion object {
         const val TAG = "EngineManager"
         const val IDLE_MS = 5 * 60_000L
+        /** Native crashes within RestartPolicy.WINDOW_MS that turn 兼容模式 on (#66: they come in bursts of 2–3 at a start). */
+        const val JIT_CRASHES = 2
     }
 }

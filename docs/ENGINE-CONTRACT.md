@@ -73,7 +73,20 @@ phone) and fully regenerates it; it holds no secret. Values are JSON (valid YAML
   config: {"search":false,"fetch":true,"searchTimeoutMs":60000}
 - id: agent-default-model       # dsh-base's default model: the 默认模型 route (#53), for plugins' own sessions
   config: {"provider":"deepseek-account","model":"deepseek-flash","reasoningEffort":"low"}
+- id: android-session-title     # 设置 → 对话标题 (#89): `disabled: true` when 自动生成对话标题 is off
+  disabled: false
+  config: {"provider":"kimi","model":"kimi-k3","reasoning":"lowest"}
 ```
+
+`android-session-title` (bundle-android row, plugin-guard `session-title.js`) is the provider of dsh's title service
+(`sessionTitle`, which also publishes the fallback title from the first words): once a conversation's first turn has
+ended it asks the title model for a short title from the first user message and up to 1500 characters of the reply's
+text (no reasoning, tool calls or results), through dsh-session-title-llm (60 s deadline, logged as
+`session/title-llm-request`, which the app does not store). `provider` / `model` = 标题模型 (absent: the
+conversation's own route); `reasoning` = `lowest` (the model's lowest level, off where it can be), `conversation` (the
+conversation's level, only while following it) or one level id (falls back to the lowest if the model lacks it).
+Failures only log; automation runs (`auto_…`) are not named by a model. A user rename (`android/session/title`, §2)
+pins the title. dsh-base's own `session-title-llm` provider stays off (dsh-sdk-app disables it).
 
 `agent-default-model` is the default model's route, the same as `initialize`'s (below; the level only when the stored
 catalog lists it). Plugins that create sessions themselves (heartbeat, chat bots) read it through dsh's
@@ -183,6 +196,10 @@ an offset past its log (`LogSeqs`), never treating a seq as a cross-generation i
   need approval up front in 仅可查看 and tells the model the mode is why (instead of "the user rejected tool …"), and
   auto-allows `write`/`edit` inside `HOME`/`TMPDIR` in the other modes. Until the app sends it the engine treats the
   mode as unknown: those writes still ask, and a refusal says "declined, or the mode is 仅可查看".
+- `android/session/title { sessionId, title }` → `{ applied }` (plugin-guard `session-title.js`, #89): 重命名 while the
+  engine runs. dsh's user title pins the conversation (a title call still waiting is dropped); `applied: false` when
+  this process does not hold the conversation. The app keeps its own record either way (`app/title` event: engine
+  `session/title` events never replace a title the user set).
 - `android/session/model { sessionId, provider, model, reasoningEffort? } | { sessionId, model: null }` →
   `{ selected: { provider, model, reasoningEffort? } }` (plugin-guard `session-model.js`, through patch 10; #53). Each
   conversation's own model (the app's `sessions.modelProvider/modelId/modelEffort`: a copy of the default taken at its

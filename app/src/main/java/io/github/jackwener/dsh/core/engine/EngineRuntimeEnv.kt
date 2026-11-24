@@ -24,7 +24,8 @@ import java.security.cert.X509Certificate
  *    simply miss and repopulate.
  *  - NODE_OPTIONS: app options + [RUNTIME_NODE_OPTIONS], de-duplicated by flag name.
  *  - HTTP(S)_PROXY / NO_PROXY: Android's proxy for the default network ([EngineProxy]), read once
- *    per engine start; with one, argv also gets `--use-env-proxy`.
+ *    per engine start (EngineManager restarts an idle engine when it changes); with one, argv also
+ *    gets `--use-env-proxy`.
  * Flags Node refuses in NODE_OPTIONS (--expose-internals) go in argv: [NODE_ARGV].
  */
 object EngineRuntimeEnv {
@@ -37,12 +38,59 @@ object EngineRuntimeEnv {
     const val PRELOAD = "node_modules/@dsh-android/bundle-android/android-env.cjs"
 
     /**
+     * Extra Node options (#66): 兼容模式's `--jitless` and the user's 引擎启动参数 (设置 → 关于),
+     * composed by Settings.engineExtraNodeOptions. Carried in the engine env Bundle so the same
+     * string reaches both NODE_OPTIONS and the argv copy that survives AT_SECURE.
+     */
+    const val EXTRA_OPTIONS_ENV = "DSH_ENGINE_NODE_OPTIONS"
+
+    /**
+     * V8 without a JIT (no executable memory at run time): the standard way around JIT crashes such
+     * as Android 16 + PAC's bare SIGSEGV (#66). Slower, and WebAssembly is unavailable.
+     */
+    const val JITLESS = "--jitless"
+
+    /**
+     * Node flags a user may not inject: they load or evaluate code before the engine's entry
+     * script (a saved option would run it at every engine start), open a debugger port, or make
+     * Node do something other than run the engine (print and exit, watch, test).
+     */
+    internal val REFUSED_EXTRA_OPTIONS = setOf(
+        "--expose-internals", "-r", "--require", "--import", "-e", "--eval", "-p", "--print",
+        "--input-type", "--loader", "--experimental-loader", "--experimental-default-type",
+        "-c", "--check", "-i", "--interactive", "-v", "--version", "-h", "--help", "--v8-options",
+        "--test", "--watch", "--watch-path", "--run", "--env-file", "--env-file-if-exists", "--completion-bash",
+    )
+    private val FLAG = Regex("^--?[A-Za-z0-9][A-Za-z0-9_-]*(=\\S+)?$")
+
+    private fun tokens(raw: String?) = raw.orEmpty().split(' ', '\t', '\n').map { it.trim() }.filter { it.isNotEmpty() }
+
+    private fun accepted(token: String): Boolean {
+        val name = token.substringBefore('=')
+        return FLAG.matches(token) && name !in REFUSED_EXTRA_OPTIONS && !name.startsWith("--inspect") && !name.startsWith("--debug")
+    }
+
+    /**
+     * Splits a user-typed option string into flags. Anything that is not a flag (a stray value
+     * would otherwise become an entry-script path in argv), the [REFUSED_EXTRA_OPTIONS] and
+     * duplicates are dropped. Node splits NODE_OPTIONS on whitespace too, so a spaced value is
+     * simply two tokens and is rejected here.
+     */
+    fun parseExtraNodeOptions(raw: String?): List<String> = tokens(raw).filter(::accepted).distinct()
+
+    /** The tokens of [raw] that [parseExtraNodeOptions] drops, for the settings field to name. */
+    fun rejectedNodeOptions(raw: String?): List<String> = tokens(raw).filterNot(::accepted).distinct()
+
+    /**
      * Full Node argv before the entry script. Zygote-forked processes run with AT_SECURE=1, so
      * Node ignores NODE_OPTIONS (and TMPDIR, NODE_COMPILE_CACHE, NODE_EXTRA_CA_CERTS — restored by
      * [PRELOAD]); the composed NODE_OPTIONS are therefore passed as argv flags as well.
      */
     fun nodeArgv(engineDir: File, env: Bundle): List<String> {
-        val options = mergeNodeOptions(env.getString("NODE_OPTIONS"), RUNTIME_NODE_OPTIONS).split(' ').filter { it.isNotBlank() }
+        val options = mergeNodeOptions(
+            env.getString("NODE_OPTIONS"),
+            RUNTIME_NODE_OPTIONS + parseExtraNodeOptions(env.getString(EXTRA_OPTIONS_ENV)),
+        ).split(' ').filter { it.isNotBlank() }
         val preload = File(engineDir, PRELOAD).takeIf { it.exists() }?.let { listOf("--require", it.path) } ?: emptyList()
         return NODE_ARGV + options + (if (proxyApplied) listOf("--use-env-proxy") else emptyList()) + preload
     }
@@ -66,11 +114,13 @@ object EngineRuntimeEnv {
 
     fun apply(context: Context, env: Bundle) {
         val vars = LinkedHashMap<String, String>()
-        env.keySet().forEach { vars[it] = env.getString(it) ?: "" }
+        env.keySet().forEach { if (it != EXTRA_OPTIONS_ENV) vars[it] = env.getString(it) ?: "" }
         CaBundle.export(context)?.let { vars["NODE_EXTRA_CA_CERTS"] = it.path }
         vars["NODE_COMPILE_CACHE"] = File(context.cacheDir, "node-compile-cache").apply { mkdirs() }.path
-        mergeNodeOptions(vars["NODE_OPTIONS"], RUNTIME_NODE_OPTIONS).takeIf { it.isNotEmpty() }?.let { vars["NODE_OPTIONS"] = it }
-        val proxy = systemProxy(context)?.also { Log.i(TAG, "engine proxy ${it.host}:${it.port}, ${it.exclusions.size} exclusions") }
+        mergeNodeOptions(vars["NODE_OPTIONS"], RUNTIME_NODE_OPTIONS + parseExtraNodeOptions(env.getString(EXTRA_OPTIONS_ENV)))
+            .takeIf { it.isNotEmpty() }?.let { vars["NODE_OPTIONS"] = it }
+        val proxy = systemProxy(context)
+        Log.i(TAG, proxy?.let { "engine proxy ${it.host}:${it.port}, ${it.exclusions.size} exclusions" } ?: "no engine proxy (none, or PAC, which Node cannot evaluate)")
         val proxyEnv = EngineProxy.env(proxy)
         EngineProxy.ENV_NAMES.forEach { if (it !in proxyEnv) runCatching { Os.unsetenv(it) } }
         vars += proxyEnv
@@ -81,14 +131,12 @@ object EngineRuntimeEnv {
     /**
      * The proxy HttpURLConnection would use: [ConnectivityManager.getDefaultProxy] (Wi-Fi, global
      * or VPN proxy of the default network), else the `http(s).proxyHost` properties Android sets in
-     * every app process. A PAC proxy is skipped: Node has no PAC evaluator.
+     * every app process. A PAC proxy is skipped: Node has no PAC evaluator. Also read by
+     * EngineManager, which restarts an idle engine when it changes.
      */
-    private fun systemProxy(context: Context): EngineProxy.Proxy? = runCatching {
+    fun systemProxy(context: Context): EngineProxy.Proxy? = runCatching {
         val info = context.getSystemService(ConnectivityManager::class.java)?.defaultProxy
-        if (info != null && info.pacFileUrl != null && info.pacFileUrl != Uri.EMPTY) {
-            Log.i(TAG, "PAC proxy configured; not applied to the engine (requests go direct)")
-            return null
-        }
+        if (info != null && info.pacFileUrl != null && info.pacFileUrl != Uri.EMPTY) return null
         if (info != null && !info.host.isNullOrBlank() && info.port > 0)
             return EngineProxy.Proxy(info.host, info.port, info.exclusionList.orEmpty().toList())
         val host = System.getProperty("https.proxyHost")?.takeIf { it.isNotBlank() } ?: System.getProperty("http.proxyHost")?.takeIf { it.isNotBlank() } ?: return null

@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import io.github.jackwener.dsh.core.engine.EngineRuntimeEnv
 import io.github.jackwener.dsh.core.data.BusySend
 import io.github.jackwener.dsh.core.data.Effort
 import io.github.jackwener.dsh.core.data.SecretStore
@@ -71,6 +72,7 @@ class SettingsViewModel @Inject constructor(
 ) : ViewModel() {
     val settings: StateFlow<DshSettings> = repo.settings.stateIn(viewModelScope, SharingStarted.Eagerly, DshSettings())
     val usage: StateFlow<List<UsageEntity>> = usage.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val usageTotal: StateFlow<UsageEntity?> = usage.observeTotal().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val engineState: StateFlow<EngineState> = engine.state
     val doctor = MutableStateFlow<List<DoctorCheck>>(emptyList())
     val keyStatus = MutableStateFlow<String?>(null)
@@ -176,6 +178,9 @@ class SettingsViewModel @Inject constructor(
     fun setAllowExternalApps(on: Boolean) = viewModelScope.launch { repo.setAllowExternalApps(on) }
     fun setVoiceOnAssist(on: Boolean) = viewModelScope.launch { repo.setVoiceOnAssist(on) }
     fun setAutoUpdateCheck(on: Boolean) = viewModelScope.launch { repo.setAutoUpdateCheck(on) }
+    fun setAutoTitle(on: Boolean) = viewModelScope.launch { repo.setAutoTitle(on) }
+    fun setTitleModel(provider: String?, model: String?) = viewModelScope.launch { repo.setTitleModel(provider, model) }
+    fun setTitleEffort(effort: String?) = viewModelScope.launch { repo.setTitleEffort(effort) }
     fun setEngineKeepAlive(on: Boolean) = viewModelScope.launch { engine.setKeepAlive(on) }
     fun setAgentScreen(on: Boolean) { viewModelScope.launch { repo.setAgentScreen(on) } }
     /** Only the degraded (untrusted) agent screen works on this phone (#60); the setting says what that means. */
@@ -188,6 +193,10 @@ class SettingsViewModel @Inject constructor(
     fun setBall(on: Boolean) = viewModelScope.launch { repo.setFloatingBall(on); FloatingBallService.setEnabled(context, on) }
     fun setBallStatus(on: Boolean) = viewModelScope.launch { repo.setBallStatus(on) }
     fun setLimits(daily: Long, session: Long) = viewModelScope.launch { repo.setLimits(daily, session) }
+    fun setEngineNodeOptions(raw: String) = viewModelScope.launch { repo.setEngineNodeOptions(EngineRuntimeEnv.parseExtraNodeOptions(raw).joinToString(" ")) }
+    /** The bundled engine's version (`engine-version.txt`, e.g. `0.2.1-rc.5-a3222e7ad23`), shown in 关于 (#79). */
+    val engineVersion: String? by lazy { runCatching { context.assets.open("engine-version.txt").bufferedReader().use { it.readText().trim() } }.getOrNull() }
+    fun setEngineJitless(on: Boolean) = viewModelScope.launch { repo.setEngineJitless(on) }
     fun toggleNotificationApp(pkg: String) = viewModelScope.launch {
         val cur = settings.value.notificationBlocked
         repo.setNotificationBlocked(if (pkg in cur) cur - pkg else cur + pkg)
@@ -218,7 +227,7 @@ class SettingsViewModel @Inject constructor(
                 appVersion = io.github.jackwener.dsh.BuildConfig.VERSION_NAME,
                 versionCode = io.github.jackwener.dsh.BuildConfig.VERSION_CODE.toLong(),
                 buildType = io.github.jackwener.dsh.BuildConfig.BUILD_TYPE,
-                engineVersion = runCatching { context.assets.open("engine-version.txt").bufferedReader().use { it.readText().trim() } }.getOrNull(),
+                engineVersion = engineVersion,
                 device = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}",
                 androidRelease = android.os.Build.VERSION.RELEASE,
                 sdk = android.os.Build.VERSION.SDK_INT,

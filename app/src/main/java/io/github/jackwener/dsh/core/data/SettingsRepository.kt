@@ -1,5 +1,6 @@
 package io.github.jackwener.dsh.core.data
 
+import io.github.jackwener.dsh.core.engine.EngineRuntimeEnv
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -93,6 +94,19 @@ data class Settings(
     val extUpdateBadge: Int = 0,
     /** 自动检查更新: a background check for a new DSH release at most once a day (core/update/AppUpdater). */
     val autoUpdateCheck: Boolean = true,
+    /** 自动生成对话标题 (#89): a model names a conversation after its first reply; off = it keeps dsh's title from its first words. */
+    val autoTitle: Boolean = true,
+    /** 标题模型 (#89): "" = DeepSeek, else a provider's route id; null = the conversation's own model. */
+    val titleProvider: String? = null,
+    val titleModel: String? = null,
+    /** 推理等级 of the title call (#89, SessionTitles): null = the lowest level. */
+    val titleEffort: String? = null,
+    /** 引擎启动参数 (#66): extra Node options merged into NODE_OPTIONS at every engine start (EngineRuntimeEnv). */
+    val engineNodeOptions: String = "",
+    /** 兼容模式 (#66): the engine runs with `--jitless`. null = automatic (on after repeated native crashes, [engineJitlessAutoAt]). */
+    val engineJitless: Boolean? = null,
+    /** When the app turned 兼容模式 on by itself (epoch ms; 0 = it has not). */
+    val engineJitlessAutoAt: Long = 0,
     /** 引擎常驻 (#52): the engine stays up (foreground service) instead of stopping when idle. Off by default. */
     val engineKeepAlive: Boolean = false,
     /** A plugin ran a background session (heartbeat, bot) at some point: 设置 → 扩展 may suggest [engineKeepAlive]. */
@@ -112,6 +126,10 @@ data class Settings(
     val reasoningChoice: String? get() = choice.provider?.let { reasoningChoices[ReasoningLevels.key(it.id, choice.model)] }
     /** The level the selected third-party route sends: the saved one while the model offers it, else none. */
     val reasoningEffort: String? get() = ReasoningLevels.effective(reasoning, reasoningChoice)
+    /** 兼容模式 in effect: the user's choice, else whether repeated native crashes turned it on (#66). */
+    val engineJitlessOn: Boolean get() = engineJitless ?: (engineJitlessAutoAt > 0)
+    /** The extra Node options the engine starts with: `--jitless` for 兼容模式, then the user's own (EngineRuntimeEnv). */
+    val engineExtraNodeOptions: String get() = listOfNotNull(EngineRuntimeEnv.JITLESS.takeIf { engineJitlessOn }, engineNodeOptions.ifBlank { null }).joinToString(" ")
 
     companion object { const val DEFAULT_MODEL = "deepseek-flash" }
 }
@@ -150,7 +168,14 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         val mcpServers = stringPreferencesKey("mcp_servers_json")
         val extUpdateBadge = intPreferencesKey("ext_update_badge")
         val autoUpdateCheck = booleanPreferencesKey("auto_update_check")
+        val autoTitle = booleanPreferencesKey("auto_title")
+        val titleProvider = stringPreferencesKey("title_provider")
+        val titleModel = stringPreferencesKey("title_model")
+        val titleEffort = stringPreferencesKey("title_effort")
         val engineKeepAlive = booleanPreferencesKey("engine_keep_alive")
+        val engineNodeOptions = stringPreferencesKey("engine_node_options")
+        val engineJitless = booleanPreferencesKey("engine_jitless")
+        val engineJitlessAutoAt = longPreferencesKey("engine_jitless_auto_at")
         val pluginBackgroundSeen = booleanPreferencesKey("plugin_background_seen")
         val reasoningChoices = stringPreferencesKey("reasoning_choices_json")
         val reasoningCatalog = stringPreferencesKey("reasoning_catalog_json")
@@ -187,7 +212,14 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
         mcpServers = decodeMcp(this[K.mcpServers]),
         extUpdateBadge = this[K.extUpdateBadge] ?: 0,
         autoUpdateCheck = this[K.autoUpdateCheck] ?: true,
+        autoTitle = this[K.autoTitle] ?: true,
+        titleProvider = this[K.titleProvider],
+        titleModel = this[K.titleModel],
+        titleEffort = this[K.titleEffort],
         engineKeepAlive = this[K.engineKeepAlive] ?: false,
+        engineNodeOptions = this[K.engineNodeOptions] ?: "",
+        engineJitless = this[K.engineJitless],
+        engineJitlessAutoAt = this[K.engineJitlessAutoAt] ?: 0,
         pluginBackgroundSeen = this[K.pluginBackgroundSeen] ?: false,
     )
 
@@ -248,7 +280,20 @@ class SettingsRepository @Inject constructor(@ApplicationContext private val con
     suspend fun setReflectExperience(on: Boolean) = context.store.edit { it[K.reflect] = on }
     suspend fun setVoiceOnAssist(on: Boolean) = context.store.edit { it[K.voiceOnAssist] = on }
     suspend fun setAutoUpdateCheck(on: Boolean) = context.store.edit { it[K.autoUpdateCheck] = on }
+    suspend fun setAutoTitle(on: Boolean) = context.store.edit { it[K.autoTitle] = on }
+    /** null [model] = follow the conversation's model. Levels differ per model: 推理等级 starts over at the lowest. */
+    suspend fun setTitleModel(provider: String?, model: String?) = context.store.edit {
+        if (provider == null || model == null) { it.remove(K.titleProvider); it.remove(K.titleModel) } else { it[K.titleProvider] = provider; it[K.titleModel] = model }
+        it.remove(K.titleEffort)
+    }
+    /** null = the lowest level. */
+    suspend fun setTitleEffort(effort: String?) = context.store.edit { if (effort == null) it.remove(K.titleEffort) else it[K.titleEffort] = effort }
     suspend fun setEngineKeepAlive(on: Boolean) = context.store.edit { it[K.engineKeepAlive] = on }
+    suspend fun setEngineNodeOptions(raw: String) = context.store.edit { it[K.engineNodeOptions] = raw.trim() }
+    /** The user's 兼容模式 choice; it also ends an automatic one. */
+    suspend fun setEngineJitless(on: Boolean) = context.store.edit { it[K.engineJitless] = on; it.remove(K.engineJitlessAutoAt) }
+    /** Repeated native crashes turned 兼容模式 on (only while the user has not chosen). */
+    suspend fun setEngineJitlessAuto(at: Long) = context.store.edit { if (it[K.engineJitless] == null) it[K.engineJitlessAutoAt] = at }
     suspend fun setPluginBackgroundSeen() = context.store.edit { it[K.pluginBackgroundSeen] = true }
 
     // ── 扩展 ──

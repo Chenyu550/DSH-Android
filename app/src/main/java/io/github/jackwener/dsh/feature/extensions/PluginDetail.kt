@@ -97,7 +97,7 @@ fun PluginDetailPage(vm: ExtensionsViewModel, name: String, onBack: () -> Unit) 
         Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
             p.update?.let { u ->
                 if (u.compatible) DButton(stringResource(R.string.ext_update_to, u.version), { vm.update(name, u.version) }, size = BtnSize.Sm, enabled = name !in busy)
-                else Text(stringResource(R.string.ext_update_needs_app, u.version), Modifier.weight(1f), style = DshType.xxs12, color = c.labelTertiary)
+                else Text(updateBlocked(u), Modifier.weight(1f), style = DshType.xxs12, color = c.labelTertiary)
             }
             DButton(stringResource(R.string.ext_uninstall), { confirmRemove = true }, variant = BtnVariant.Danger, size = BtnSize.Sm, enabled = name !in busy)
         }
@@ -223,7 +223,9 @@ fun MarketEntryPage(vm: ExtensionsViewModel, url: String, name: String, onInstal
             e?.repository?.let { KeyValue("GitHub", it.url + (it.directory?.let { d -> "/$d" } ?: ""), mono = true) }
             e?.installVersion?.engines?.get("dsh")?.let { KeyValue("engines.dsh", it, mono = true) }
         }
-        Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.End) {
+        val webOnly = e?.webOnly
+        if (webOnly != null) Text(stringResource(R.string.ext_market_web_only_detail, webOnly.labels), Modifier.padding(16.dp), style = DshType.xs13, color = c.amber)
+        else Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.End) {
             val v = e?.installVersion
             DButton(stringResource(R.string.ext_install), { vm.install.start(v?.let { MarketIndex.installSpec(name, it) } ?: name) }, size = BtnSize.Sm)
         }

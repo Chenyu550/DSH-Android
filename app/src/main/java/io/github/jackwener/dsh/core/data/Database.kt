@@ -151,6 +151,9 @@ interface RuleDao {
 interface UsageDao {
     @Query("SELECT * FROM usage ORDER BY day DESC LIMIT 30")
     fun observe(): Flow<List<UsageEntity>>
+    /** Every recorded day summed (`day` = "all"): the overall cache hit rate (#76). */
+    @Query("SELECT 'all' AS day, COALESCE(SUM(inputTokens), 0) AS inputTokens, COALESCE(SUM(outputTokens), 0) AS outputTokens, COALESCE(SUM(cachedTokens), 0) AS cachedTokens FROM usage")
+    fun observeTotal(): Flow<UsageEntity>
     @Query("SELECT * FROM usage WHERE day = :day")
     suspend fun get(day: String): UsageEntity?
     @Upsert suspend fun upsert(u: UsageEntity)

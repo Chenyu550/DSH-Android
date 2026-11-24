@@ -3,6 +3,7 @@ package io.github.jackwener.dsh.feature.settings
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -37,9 +38,14 @@ import io.github.jackwener.dsh.core.designsystem.BtnSize
 import io.github.jackwener.dsh.core.designsystem.BtnVariant
 import io.github.jackwener.dsh.core.designsystem.DButton
 import io.github.jackwener.dsh.core.designsystem.DCheckbox
+import io.github.jackwener.dsh.core.designsystem.DDialog
 import io.github.jackwener.dsh.core.designsystem.DIcon
 import io.github.jackwener.dsh.core.designsystem.DInput
 import io.github.jackwener.dsh.core.designsystem.DSwitch
+import io.github.jackwener.dsh.core.designsystem.DMenu
+import io.github.jackwener.dsh.core.provider.ReasoningLevel
+import io.github.jackwener.dsh.core.session.SessionTitles
+import io.github.jackwener.dsh.core.designsystem.MenuItem
 import io.github.jackwener.dsh.core.designsystem.Dsh
 import io.github.jackwener.dsh.core.designsystem.DshType
 import io.github.jackwener.dsh.core.designsystem.FilterPill
@@ -201,6 +207,67 @@ fun DefaultModelCard(vm: SettingsViewModel) {
     }
 }
 
+/**
+ * 对话标题 (#89): 自动生成对话标题, 标题模型 (跟随对话模型, or one configured model; a light one saves
+ * tokens) and its 推理等级. The engine names a conversation once its first reply is done (SessionTitles).
+ */
+@Composable
+fun TitleCard(vm: SettingsViewModel) {
+    val c = Dsh.colors
+    val s by vm.settings.collectAsStateWithLifecycle()
+    SettingsGroupTitle(stringResource(R.string.title_group))
+    SettingsCard {
+        SettingsRow(stringResource(R.string.title_auto), stringResource(R.string.title_auto_desc), divider = false,
+            trailing = { DSwitch(s.autoTitle, vm::setAutoTitle) })
+        if (s.autoTitle) {
+            val pinned = SessionTitles.pinned(s)
+            val label = when {
+                pinned == null -> stringResource(R.string.title_model_follow)
+                pinned.isDeepSeek -> DEEPSEEK_MODELS.firstOrNull { it.first == pinned.model }?.second ?: pinned.model
+                else -> "${pinned.model} · ${s.providers.firstOrNull { it.id == pinned.provider }?.name ?: pinned.provider}"
+            }
+            var open by remember { mutableStateOf(false) }
+            Box {
+                SettingsRow(stringResource(R.string.title_model), label, onClick = { open = true },
+                    trailing = { DIcon(R.drawable.dsw_chevrons_up_down_outline, size = 14.dp, tint = c.labelTertiary) })
+                DMenu(open, { open = false }) {
+                    MenuItem(stringResource(R.string.title_model_follow), { open = false; vm.setTitleModel(null, null) }, selected = pinned == null)
+                    DEEPSEEK_MODELS.forEach { (id, name) ->
+                        MenuItem(name, { open = false; vm.setTitleModel("", id) }, description = "DeepSeek", selected = pinned?.isDeepSeek == true && pinned.model == id)
+                    }
+                    s.providers.filter { it.enabled }.forEach { p ->
+                        p.models.forEach { m ->
+                            MenuItem(m, { open = false; vm.setTitleModel(p.id, m) }, description = p.name, selected = pinned?.provider == p.id && pinned.model == m)
+                        }
+                    }
+                }
+            }
+            // 推理等级: 自动 (the lowest level, off where the model can), 跟随对话 while following, or one level of the configured model.
+            val effort = SessionTitles.effort(s)
+            val levels = listOf(ReasoningLevel(SessionTitles.LOWEST, "")) + SessionTitles.levels(s)
+            var openEffort by remember { mutableStateOf(false) }
+            Box {
+                SettingsRow(stringResource(R.string.title_effort), titleEffortName(effort, levels.firstOrNull { it.id == effort }?.name ?: effort),
+                    onClick = { openEffort = true },
+                    trailing = { DIcon(R.drawable.dsw_chevrons_up_down_outline, size = 14.dp, tint = c.labelTertiary) })
+                DMenu(openEffort, { openEffort = false }) {
+                    levels.forEach { l ->
+                        MenuItem(titleEffortName(l.id, l.name), { openEffort = false; vm.setTitleEffort(l.id.takeUnless { it == SessionTitles.LOWEST }) }, selected = l.id == effort)
+                    }
+                }
+            }
+            Text(stringResource(R.string.title_model_hint), Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp), style = DshType.xxs12, color = c.labelTertiary)
+        }
+    }
+}
+
+@Composable
+private fun titleEffortName(id: String, name: String): String = when (id) {
+    SessionTitles.LOWEST -> stringResource(R.string.title_effort_lowest)
+    SessionTitles.CONVERSATION -> stringResource(R.string.title_effort_conversation)
+    else -> name
+}
+
 /** Add (preset list → [onPreset] opens the editor for it) or edit one provider ([presetId]: the new provider's preset). */
 @Composable
 fun ProviderPage(vm: SettingsViewModel, target: String, presetId: String?, onPreset: (String) -> Unit, onDone: () -> Unit) {
@@ -279,6 +346,7 @@ private fun ProviderEditor(vm: SettingsViewModel, existing: ProviderConfig?, pre
     var verifiedFor by remember { mutableStateOf(existing?.let { endpointKey(it.api, it.baseUrl, "") }) }
     // A model that passed 测试 and becomes the main model on 保存 (a new provider, or the current main route).
     var pendingMain by remember { mutableStateOf<String?>(null) }
+    var confirmDelete by remember { mutableStateOf(false) }
     val current = existing
     val needsKey = !preset.keyOptional && current?.hasKey != true
     // 高级设置: extra request headers and the per-conversation session header (js patch 18).
@@ -288,6 +356,17 @@ private fun ProviderEditor(vm: SettingsViewModel, existing: ProviderConfig?, pre
     fun sessionHeaderOrNull() = sessionHeader.trim().ifEmpty { null }
     fun headersValid() = headerRows.all { r -> r.name.isBlank() || (isUsableHeaderName(r.name.trim()) && isUsableHeaderValue(r.value)) } &&
         (sessionHeader.isBlank() || isUsableHeaderName(sessionHeader.trim()))
+
+    /**
+     * Removes one model from this provider (#64) with everything kept for it: its overrides, listing
+     * values and test state. Applied on 保存 like any edit; a later listing offers it again unchecked.
+     */
+    fun forget(m: String) {
+        offered.remove(m); selected.remove(m); manual.remove(m); missing.remove(m)
+        overrides.remove(m); imageOverrides.remove(m); reasoningDecls.remove(m); detected.remove(m); verified.remove(m)
+        if (editing == m) editing = null
+        if (pendingMain == m) pendingMain = null
+    }
 
     fun applyListing(fetched: FetchedModels<RemoteModel>) {
         val list = fetched.models
@@ -479,6 +558,8 @@ private fun ProviderEditor(vm: SettingsViewModel, existing: ProviderConfig?, pre
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconBtn(R.drawable.dsw_edit_outline, { editing = if (editing == m) null else m }, size = 32.dp, iconSize = 14.dp,
                             tint = if (m in overrides || m in imageOverrides || m in reasoningDecls) c.link else c.labelTertiary, contentDescription = stringResource(R.string.prov_model_limits))
+                        IconBtn(R.drawable.dsw_trash_outline, { forget(m) }, size = 32.dp, iconSize = 14.dp, tint = c.labelTertiary,
+                            contentDescription = stringResource(R.string.prov_model_remove))
                         DCheckbox(on, { if (it) selected.add(m) else selected.remove(m) })
                     }
                 })
@@ -519,6 +600,10 @@ private fun ProviderEditor(vm: SettingsViewModel, existing: ProviderConfig?, pre
         }
     }
 
+    if (confirmDelete && current != null) DDialog({ confirmDelete = false }, stringResource(R.string.prov_delete), buttons = {
+        DButton(stringResource(R.string.cancel), { confirmDelete = false }, variant = BtnVariant.Outline)
+        DButton(stringResource(R.string.delete), { confirmDelete = false; vm.deleteProvider(current); onDone() }, variant = BtnVariant.Danger)
+    }) { Text(stringResource(R.string.prov_delete_confirm, current.name), style = DshType.s14) }
     error?.let { Text(stringResource(it), Modifier.padding(start = 4.dp, top = 12.dp), style = DshType.xs13, color = c.error) }
     testing?.let { t ->
         Row(Modifier.padding(start = 4.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -527,7 +612,7 @@ private fun ProviderEditor(vm: SettingsViewModel, existing: ProviderConfig?, pre
     }
     result?.let { (ok, text) -> Text(text, Modifier.padding(start = 4.dp, top = 12.dp), style = DshType.xs13, color = if (ok) c.labelSecondary else c.error) }
     Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
-        if (current != null) DButton(stringResource(R.string.prov_delete), { vm.deleteProvider(current); onDone() }, variant = BtnVariant.Danger, size = BtnSize.Sm)
+        if (current != null) DButton(stringResource(R.string.prov_delete), { confirmDelete = true }, variant = BtnVariant.Danger, size = BtnSize.Sm)
         Spacer(Modifier.weight(1f))
         DButton(stringResource(R.string.cancel), onDone, variant = BtnVariant.Outline, size = BtnSize.Sm)
         DButton(stringResource(R.string.prov_test), {
