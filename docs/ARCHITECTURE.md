@@ -68,6 +68,16 @@ Shizuku 用户服务（shell uid，可选）：ShellUserService
 
 **能力桥**（`DSH_BRIDGE_FD`，AF_UNIX socketpair，换行分隔的 JSON-RPC）：`plugin-device` 调用 `capability/list` 把每个 `ToolDescriptor` 注册成 dsh 工具，再用 `capability/invoke` 执行。工具描述是静态的，Shizuku 是否可用、权限是否授予都放在调用结果里返回，避免改动描述导致整段缓存的 prompt 重新计费。超时和取消规则见契约 §3.1：每个工具有一个 `timeoutMs`，App 在截止前 5 秒作答；插件超时或本轮中止时发 `capability/cancel`；所有等待在动手前都会再检查一次调用是否仍然有效。
 
+## 远程模式（core/remote/，#51）
+
+App 还能驱动电脑或服务器上安装的 dsh（≥ 0.2.2）：用 SSH（Apache MINA SSHD）在那台机器上执行 `dsh --profile sdk`，把 exec 通道的 stdin/stdout 交给同一个 `JsonRpcPeer`，走同样的 SDK 协议。这不是另一套界面：对话、轨迹、审批、提问卡片、会话列表都复用，只是换了一个运行时。细节见契约 §5。
+
+- **两个运行时，一个接口**：`core/engine/SdkEngine` 由 `EngineManager`（手机上的 `:engine`）和 `RemoteEngine`（每个远程主机一个）实现。每个会话属于其中一个（`sessions.hostId`，null 为本机），`SessionStore` 按它路由 prompt、通知、停止和断线恢复；一个运行时出事只影响它自己的会话。本机引擎的行为没有变化。
+- **工作区**：侧栏顶部和 设置 → 远程主机 可以在「本机」和各台主机之间切换；会话列表只显示当前工作区的会话，新会话在当前工作区运行。悬浮球 / 快捷面板、自动化始终在本机运行。远程会话顶栏显示「远程 · 主机名」和连接状态，可断开。
+- **远程能做什么**：电脑上的 dsh 原样运行（它自己的工具、技能、MCP、模型配置）。手机侧的东西不存在：设备工具和能力桥、会话模式、`android/session/*` 扩展、插话（远程运行中发的消息排队）、文件附件（图片随消息发送）、按手机断网等待。权限模式只在 App 侧生效（`approval/request` 按会话的模式回答）。模型是主机设置里的 provider / model（默认 deepseek-official），可选把手机上的 DeepSeek API key 经 SSH 通道交给它。
+- **连接**：首次 发送 / 测试连接 时连接；主机密钥首次使用即信任（TOFU，显示 SHA-256 指纹，需要在 测试连接 里确认），变化时拒绝连接并醒目警告；15 秒一次 keepalive；连接期间 `RemoteService`（前台服务）让 `:main` 留在前台；10 分钟没有运行就断开。断线（keepalive 超时、电脑断开、手机默认网络切换）按引擎丢失处理：重连后 `session/resume`，被打断的会话自动续一次。启动脚本会结束同一主机条目留下的旧 dsh 进程，新进程才能接管会话。
+- **凭据**：密码、私钥、私钥密码、环境变量存 `SecretStore`（Keystore 加密），不进日志和诊断；值经 SSH 通道的 stdin 传给远程脚本，不出现在远程的命令行里。
+
 ## 能力层（core/capability/）
 
 `CapabilityHub` 是设备能力的唯一入口。它按顺序检查：工具组是否开启 → 无人值守会话的白名单 → 锁屏 → 执行。工具缺权限时抛 `PermissionMissingException`：有人值守的会话在输入框位置显示授权卡片，用户授权后自动重试；无人值守的会话直接返回 `permission_missing`。截图类结果由 `ShotStore` 按会话保存，供界面显示。
@@ -173,7 +183,7 @@ dsh-base 自带 DeepSeek 账号 provider（OAuth + PKCE，凭据存在 `DSH_HOME
 
 ## 存储
 
-第三方服务商列表存在 DataStore（JSON），密钥存在 `SecretStore`。用户的会话模式也存在 DataStore（JSON）。Room（`core/data/Database.kt`，版本 3）：`sessions`（含 `preset`、`modeId`）、`events`（原样的 dsh 事件，加上 App 本地记录 `app/*`，后者用负序号）、`rules`、`rule_runs`、`usage`（按天的 token 数）。设置存在 DataStore。dsh 自己在 `DSH_HOME` 里持久化会话，以便 resume。
+第三方服务商列表存在 DataStore（JSON），密钥存在 `SecretStore`。远程主机存在单独的 DataStore `remote_hosts`，密码 / 私钥同样在 `SecretStore`。用户的会话模式也存在 DataStore（JSON）。Room（`core/data/Database.kt`，版本 6）：`sessions`（含 `preset`、`modeId`、`muted`、会话自己的模型、远程主机 `hostId`）、`events`（原样的 dsh 事件，加上 App 本地记录 `app/*`，后者用负序号）、`rules`、`rule_runs`、`usage`（按天的 token 数）。设置存在 DataStore。dsh 自己在 `DSH_HOME` 里持久化会话，以便 resume。
 
 Room 升级必须写 `Migration`（`Migrations.ALL`）：从 2 起的每个已发布版本都原地迁移（v2 → v3 只是 `ALTER TABLE sessions ADD COLUMN modeId TEXT`），只有预发布的 v1 还会被重建（`fallbackToDestructiveMigrationFrom(1)`）；降级安装才会清空。缺少迁移时 Room 直接报错，而不是悄悄删掉所有对话。`MigrationTest` 在 JVM 上用 sqlite-jdbc 按冻结的 v2 schema（`src/test/resources/room-schemas/2.json`）建库、灌数据、跑迁移 SQL，再逐列对照 Room 为当前版本导出的 schema（`app/schemas/`，构建时生成）。
 
@@ -188,4 +198,4 @@ js/build-engine.sh                # engine.zip + engine.sha256 → $OUT_DIR
 - 原生库：`native/build.sh` 交叉编译 Node 24.22.1（`--shared --dest-os=android`，Termux 补丁加少量自有补丁）、JNI 包装 `libdshengine.so`、flock 和 node-pty 两个插件（打包为 `libdsh_flock.so`、`libdsh_pty.so`）。产物以 GitHub Release 发布，tag 是 `native-node<版本>-<输入哈希>`。`librg.so` 是上游的 ripgrep 二进制。
 - 引擎包：用 npm 按 lockfile 安装锁定版本的 dsh，复制 `js/packages/*`（含 vendored 的 `@snnh/dsh-llm-service-lite`，其依赖必须已在 lockfile 树里且版本满足），打 `js/patches/*`，裁剪掉用不到的包，校验没有符号链接，生成确定性的 zip。
 - Gradle 属性：`dsh.nativeOut`（默认 `toolchains/out/jniLibs`）、`dsh.engineOut`（默认 `toolchains/out/engine`，即 build-engine.sh 的输出目录）、`dsh.thirdPartyOut`（Shizuku APK，默认 `toolchains/out/third-party`）、`dsh.fetchShizuku=false`（不内置 Shizuku）。在 arm64 Linux 主机上构建时需要传 `-Pandroid.aapt2FromMavenOverride=<arm64 aapt2>`。`toolchains/` 已被 gitignore。
-- 技术栈：Kotlin、Compose + Material 3、Hilt、Room、DataStore、kotlinx.serialization、Coil 3、multiplatform-markdown-renderer、Shizuku API、Play services location（只用于地理围栏）、pdfbox-android。
+- 技术栈：Kotlin、Compose + Material 3、Hilt、Room、DataStore、kotlinx.serialization、Coil 3、multiplatform-markdown-renderer、Shizuku API、Play services location（只用于地理围栏）、pdfbox-android、Apache MINA SSHD + net.i2p eddsa（远程模式，约 +2.3 MB dex，不带 BouncyCastle）。

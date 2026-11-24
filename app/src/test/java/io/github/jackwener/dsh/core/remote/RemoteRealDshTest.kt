@@ -33,6 +33,10 @@ import java.io.File
 class RemoteRealDshTest {
     private fun env(name: String) = System.getenv("DSH_REMOTE_E2E_$name")
 
+    companion object {
+        init { System.setProperty("org.apache.sshd.security.registrars", "org.apache.sshd.common.util.security.eddsa.EdDSASecurityProviderRegistrar") }
+    }
+
     @Test fun realSshdRunsRealDshSdk() = runBlocking {
         val port = env("PORT")?.toIntOrNull()
         assumeTrue("DSH_REMOTE_E2E_PORT not set", port != null)

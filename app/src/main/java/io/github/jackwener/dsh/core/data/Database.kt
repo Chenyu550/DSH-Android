@@ -51,6 +51,8 @@ data class SessionEntity(
     val modelProvider: String? = null,
     val modelId: String? = null,
     val modelEffort: String? = null,
+    /** Remote mode (#51): the RemoteHost whose dsh runs this conversation; null = this phone's engine. */
+    val hostId: String? = null,
 )
 
 /**
@@ -106,6 +108,8 @@ interface SessionDao {
     suspend fun setModel(id: String, provider: String?, model: String?, effort: String?)
     @Query("SELECT * FROM sessions WHERE id = :id")
     suspend fun get(id: String): SessionEntity?
+    @Query("SELECT id FROM sessions WHERE hostId = :hostId")
+    suspend fun idsOfHost(hostId: String): List<String>
     @Query("SELECT * FROM sessions WHERE running = 1")
     suspend fun running(): List<SessionEntity>
     @Upsert suspend fun upsert(s: SessionEntity)
@@ -166,7 +170,7 @@ abstract class DshDatabase : RoomDatabase() {
     abstract fun usage(): UsageDao
 }
 
-const val DB_VERSION = 5
+const val DB_VERSION = 6
 
 /**
  * Schema migrations. Every released version from 2 on is migrated in place (conversations are user
@@ -199,7 +203,14 @@ object Migrations {
         override fun migrate(db: SupportSQLiteDatabase) { SQL_4_5.forEach(db::execSQL) }
     }
 
-    val ALL: Array<Migration> = arrayOf(M_2_3, M_3_4, M_4_5)
+    /** v6: `sessions.hostId` (remote mode, #51). Existing rows read null = this phone, as before. */
+    val SQL_5_6 = listOf("ALTER TABLE `sessions` ADD COLUMN `hostId` TEXT")
+
+    val M_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) { SQL_5_6.forEach(db::execSQL) }
+    }
+
+    val ALL: Array<Migration> = arrayOf(M_2_3, M_3_4, M_4_5, M_5_6)
     /** Versions that are still recreated instead of migrated. */
     val DESTRUCTIVE_FROM = intArrayOf(1)
 }

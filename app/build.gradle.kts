@@ -77,6 +77,8 @@ android {
             // require-builtin is replaced by --expose-internals (js/patches/02); never ship the old addon.
             excludes += "**/libdsh_require_builtin.so"
         }
+        // Apache MINA SSHD (#51): both jars ship the same Maven dependency listing.
+        resources { excludes += "META-INF/DEPENDENCIES" }
     }
     // Native engine (libnode, JNI wrapper, addons, rg) and the dsh engine bundle are built outside Gradle:
     // native/build.sh and js/build-engine.sh. Point these at their output directories.

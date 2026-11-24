@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Remote mode (#51): SSH to a computer and drive the dsh installed there. -->
+<resources>
+    <string name="set_remote">Remote hosts</string>
+    <string name="remote_intro">Connect to your computer or server over SSH and use the dsh installed there (0.2.2 or later): conversations, trajectories and approvals stay on the phone, while commands and file work happen on the computer. The computer needs a running sshd and must be able to run dsh (Linux / macOS).</string>
+    <string name="remote_scope_note">Remote conversations have no phone capabilities (screen, notifications, SMS, file attachments…) and no session modes; the model comes from the computer\'s dsh, and images are sent along with messages. After a network drop or switch the app reconnects and continues the task.</string>
+    <string name="remote_workspace">Workspace</string>
+    <string name="remote_this_phone">This phone</string>
+    <string name="remote_this_phone_desc">Runs on the phone and can operate it</string>
+    <string name="remote_hosts">Hosts</string>
+    <string name="remote_add">Add remote host</string>
+    <string name="remote_edit">Remote host</string>
+    <string name="remote_connect_computer">Connect a computer…</string>
+    <string name="remote_manage">Manage remote hosts…</string>
+    <string name="remote_state_connected">Connected</string>
+    <string name="remote_state_connecting">Connecting…</string>
+    <string name="remote_state_lost">Connection lost</string>
+    <string name="remote_state_failed">Connection failed</string>
+    <string name="remote_connected_notif">Connected to %1$s</string>
+    <string name="remote_badge">Remote · %1$s</string>
+    <string name="remote_disconnect">Disconnect</string>
+    <string name="remote_disconnect_desc">Ends dsh on the computer; the next message reconnects</string>
+    <string name="remote_host_settings">Remote host settings</string>
+    <string name="remote_hero">Running on %1$s</string>
+
+    <string name="remote_name">Name</string>
+    <string name="remote_name_hint">Home desktop</string>
+    <string name="remote_host">Host</string>
+    <string name="remote_host_desc">IPv4, IPv6 or a domain name, e.g. 192.168.1.10, home.example.com</string>
+    <string name="remote_port">Port</string>
+    <string name="remote_user">User name</string>
+    <string name="remote_auth">Authentication</string>
+    <string name="remote_auth_password">Password</string>
+    <string name="remote_auth_key">Private key</string>
+    <string name="remote_password">Password</string>
+    <string name="remote_key">Private key</string>
+    <string name="remote_key_desc">Paste an OpenSSH or PEM private key (ed25519, ECDSA, RSA), or import a file</string>
+    <string name="remote_key_file">Import file</string>
+    <string name="remote_passphrase">Key passphrase</string>
+    <string name="remote_passphrase_desc">Leave empty if the key is not encrypted</string>
+    <string name="remote_secret_stored">Saved (leave empty to keep)</string>
+    <string name="remote_dsh_group">dsh on the computer</string>
+    <string name="remote_workdir">Working directory</string>
+    <string name="remote_workdir_desc">New conversations start here; empty = the home directory, ~/ works</string>
+    <string name="remote_command">dsh command</string>
+    <string name="remote_command_desc">If it is not found, enter the full path (run which dsh on the computer), or e.g. npx -y @deepseek-ai/dsh</string>
+    <string name="remote_model">Model</string>
+    <string name="remote_model_desc">A provider and model id the computer\'s dsh can use, e.g. deepseek-official / deepseek-flash</string>
+    <string name="remote_share_key">Use this phone\'s DeepSeek API key</string>
+    <string name="remote_share_key_desc">Handed to the computer\'s dsh over the SSH channel (never written to its disk or shown in its command line); off = the computer\'s own configuration</string>
+    <string name="remote_env">Environment variables</string>
+    <string name="remote_env_desc">One KEY=value per line, passed to dsh on the computer</string>
+    <string name="remote_hostkey">Host key fingerprint</string>
+    <string name="remote_hostkey_none">Not confirmed yet</string>
+    <string name="remote_hostkey_desc">Checked on every connection; a change is reported loudly and refused</string>
+    <string name="remote_hostkey_none_desc">The first Test connection shows the computer\'s SHA256 fingerprint; nothing connects until you confirm it</string>
+    <string name="remote_test">Test connection</string>
+    <string name="remote_testing">Connecting and starting dsh…</string>
+    <string name="remote_test_ok">Connected; dsh started in %1$s</string>
+    <string name="remote_invalid_host">Enter a valid host</string>
+    <string name="remote_invalid_port">The port must be 1–65535</string>
+    <string name="remote_invalid_user">Enter a user name</string>
+    <string name="remote_need_password">Enter the password</string>
+    <string name="remote_need_key">Paste or import a private key</string>
+    <string name="remote_invalid_env">Environment variables must be one KEY=value per line</string>
+
+    <string name="remote_trust_title">First connection: confirm the host key</string>
+    <string name="remote_trust_body">The host key fingerprint of %1$s is:</string>
+    <string name="remote_trust_check">Check it on the computer with ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub and trust it only if it matches; every later connection is checked against it.</string>
+    <string name="remote_trust">Trust and connect</string>
+    <string name="remote_changed_title">⚠ The host key has changed</string>
+    <string name="remote_changed_body">The host key of %1$s is not the one you trusted.\n\nBefore: %2$s\nNow: %3$s\n\nSomeone may be impersonating this computer (a man-in-the-middle attack) and could capture your password and conversations. Trust the new key only if you know the computer was reinstalled or its SSH host keys were regenerated, and you checked the new fingerprint on the computer.</string>
+    <string name="remote_changed_check">I checked the new fingerprint on the computer</string>
+    <string name="remote_changed_trust">Trust the new key</string>
+    <string name="remote_delete_title">Delete this remote host?</string>
+    <string name="remote_delete_body">Deletes its connection details, the saved password / key, and its conversations on this phone. dsh\'s own sessions on the computer are not touched.</string>
+
+    <string name="remote_error_title">The remote computer is unavailable</string>
+    <string name="remote_open_settings">Remote host settings</string>
+    <string name="remote_recovering">The connection to the computer dropped; reconnecting and continuing the task…</string>
+    <string name="err_remote_lost">The connection to the computer dropped; this turn was interrupted.</string>
+    <string name="remote_err_offline">The phone has no network connection.</string>
+    <string name="remote_err_dns">Cannot resolve the host name: check the domain, or use an IP address.</string>
+    <string name="remote_err_timeout">Connection timed out: the computer is offline, the address is wrong, or the networks cannot reach each other (outside your LAN you need a public address, port forwarding or e.g. Tailscale).</string>
+    <string name="remote_err_refused">Connection refused: sshd is not running on the computer, or the port is wrong.</string>
+    <string name="remote_err_unreachable">Network unreachable: there is no route between the phone and the computer.</string>
+    <string name="remote_err_hostkey_unknown">This computer\'s host key is not confirmed yet: open it in Settings → Remote hosts, tap Test connection and check the fingerprint.</string>
+    <string name="remote_err_hostkey_changed">⚠ The computer\'s host key changed (now %1$s), so the connection was refused: someone may be impersonating it. If you reinstalled it or changed its keys, check and trust the new key in Settings → Remote hosts.</string>
+    <string name="remote_err_auth">Authentication failed: wrong user name or password, or the computer does not accept this key (check ~/.ssh/authorized_keys).</string>
+    <string name="remote_err_key_invalid">Cannot read the private key (%1$s): OpenSSH and PEM formats are supported.</string>
+    <string name="remote_err_key_passphrase">Wrong key passphrase, or the key is encrypted and no passphrase was entered.</string>
+    <string name="remote_err_workdir">Cannot enter the working directory on the computer: %1$s</string>
+    <string name="remote_err_no_dsh">dsh was not found on the computer (%1$s). Install it there (npm i -g @deepseek-ai/dsh), or enter the full path of the dsh command in the host settings.</string>
+    <string name="remote_err_dsh_exited">dsh failed to start on the computer: %1$s</string>
+    <string name="remote_err_initialize">The computer\'s dsh refused the model: %1$s. Check the model in the host settings, or the providers configured in dsh on the computer.</string>
+    <string name="remote_err_host_missing">This remote host was deleted.</string>
+    <string name="remote_err_other">Remote connection error: %1$s</string>
+</resources>

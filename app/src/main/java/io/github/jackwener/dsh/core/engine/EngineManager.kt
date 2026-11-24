@@ -94,7 +94,8 @@ class EngineManager @Inject constructor(
     private val capabilities: Lazy<CapabilityHub>,
     private val sessions: Lazy<SessionStore>,
     private val account: Lazy<AccountRepository>,
-) {
+) : SdkEngine {
+    override val androidExtensions get() = true
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e -> Log.e(TAG, "engine task crashed", e) })
     private val mutex = Mutex()
     private val _state = MutableStateFlow<EngineState>(EngineState.Stopped)
@@ -107,12 +108,12 @@ class EngineManager @Inject constructor(
     var startupMillis: Long = 0; private set
 
     /** Incremented on every engine start; sessions must be resumed once per generation. */
-    @Volatile var generation: Int = 0; private set
+    @Volatile override var generation: Int = 0; private set
     /**
      * Highest generation that has been torn down (stopped, crashed or failed to start). Anything a
      * retired generation still delivers describes a process that no longer exists.
      */
-    @Volatile var retiredGeneration: Int = 0; private set
+    @Volatile override var retiredGeneration: Int = 0; private set
     private val _route = MutableStateFlow<EngineRoute?>(null)
     /** Route of the running engine (null while stopped). A settings change that differs waits until no run is active. */
     val route: StateFlow<EngineRoute?> = _route.asStateFlow()
@@ -193,7 +194,7 @@ class EngineManager @Inject constructor(
      * when there is neither an API key nor an account login.
      */
     /** The running engine's channel, without starting one (null while stopped or starting). */
-    fun sdkIfReady(): JsonRpcPeer? = sdk?.takeIf { state.value == EngineState.Ready }
+    override fun sdkIfReady(): JsonRpcPeer? = sdk?.takeIf { state.value == EngineState.Ready }
 
     suspend fun sdk(): JsonRpcPeer = sdk(null)
 
@@ -245,7 +246,7 @@ class EngineManager @Inject constructor(
     }
 
     /** SessionStore is about to open (create/resume) an SDK session in the current generation. */
-    fun markSessionOpened() { sessionsOpened = true }
+    override fun markSessionOpened() { sessionsOpened = true }
 
     private suspend fun initialize(peer: JsonRpcPeer, route: EngineRoute) {
         withTimeout(90_000) {
@@ -368,11 +369,11 @@ class EngineManager @Inject constructor(
     }.getOrNull()
 
     /** Called when there is no running work; stops the engine after [IDLE_MS] (never with 引擎常驻). */
-    fun scheduleIdleShutdown() {
+    override fun scheduleIdleShutdown() {
         idleJob?.cancel()
         idleJob = scope.launch {
             delay(IDLE_MS)
-            if (!EngineKeepAlive.mayStopWhenIdle(settings.current().engineKeepAlive, sessions.get().hasRunning(), account.get().busy)) return@launch
+            if (!EngineKeepAlive.mayStopWhenIdle(settings.current().engineKeepAlive, sessions.get().hasRunning(null), account.get().busy)) return@launch
             stop()
         }
     }
@@ -403,10 +404,10 @@ class EngineManager @Inject constructor(
         if (on) { idleJob?.cancel(); keepAlive() } else if (_state.value == EngineState.Ready) scheduleIdleShutdown()
     }
 
-    fun cancelIdleShutdown() { idleJob?.cancel() }
+    override fun cancelIdleShutdown() { idleJob?.cancel() }
 
     /** Hard stop: the SDK has no cancel method, so stopping a turn means stopping the process. */
-    suspend fun stop() { mutex.withLock { shutdownLocked() }; keepAlive() }
+    override suspend fun stop() { mutex.withLock { shutdownLocked() }; keepAlive() }
 
     /** Asks Node to exit and waits for the `:engine` process to die so the next start gets a fresh one. */
     private suspend fun shutdownLocked() {

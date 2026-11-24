@@ -48,6 +48,8 @@ sealed interface Route
 @Serializable data class ProviderRoute(val id: String? = null, val preset: String? = null) : Route
 /** 会话模式 → a mode, or a new one (null). */
 @Serializable data class ModeRoute(val id: String? = null) : Route
+/** 远程主机 → a host ([id]) or a new one (null). */
+@Serializable data class RemoteHostRoute(val id: String? = null) : Route
 /** 扩展 → an installed plugin. */
 @Serializable data class PluginRoute(val name: String) : Route
 /** 扩展 → a plugin from an index (not installed). */

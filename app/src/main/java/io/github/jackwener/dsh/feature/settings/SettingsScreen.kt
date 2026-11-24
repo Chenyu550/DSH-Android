@@ -105,6 +105,8 @@ enum class SettingsSection(val label: Int, val icon: Int) {
     Account(R.string.acct_nav, R.drawable.dsw_user_outline), General(R.string.set_general, R.drawable.dsw_settings_outline),
     Model(R.string.set_model, R.drawable.dsw_data_outline), Agent(R.string.set_agent, R.drawable.dsw_apps_add_outline),
     Extensions(R.string.set_extensions, R.drawable.dsw_cordis_plugin_outline),
+    /** 远程主机 (#51): computers whose dsh the app drives over SSH. */
+    Remote(R.string.set_remote, R.drawable.dsw_workspace_tree_outline),
     Modes(R.string.set_modes, R.drawable.dsw_agent_preset_outline),
     Usage(R.string.set_usage, R.drawable.dsw_gauge_outline), Phone(R.string.set_phone, R.drawable.dsw_shield_outline),
     About(R.string.set_about, R.drawable.dsw_info_outline);
@@ -151,6 +153,7 @@ fun SettingsSectionScreen(section: SettingsSection, onBack: () -> Unit, open: (R
             SettingsSection.Model -> ModelSection(vm) { open(ProviderRoute(it.takeUnless { id -> id == NEW_PROVIDER })) }
             SettingsSection.Agent -> AgentSection(vm) { open(AppNotesRoute) }
             SettingsSection.Extensions -> io.github.jackwener.dsh.feature.extensions.ExtensionsSection(open, onTop)
+            SettingsSection.Remote -> RemoteSection(hiltViewModel()) { open(io.github.jackwener.dsh.nav.RemoteHostRoute(it)) }
             SettingsSection.Modes -> ModesSection(vm) { open(ModeRoute(it.takeUnless { id -> id == NEW_MODE })) }
             SettingsSection.Usage -> UsageSection(vm)
             SettingsSection.Phone -> PhoneSection(vm) { open(NotifAppsRoute) }
@@ -164,6 +167,11 @@ fun ProviderScreen(route: ProviderRoute, onBack: () -> Unit, open: (Route) -> Un
     SettingsPage(stringResource(R.string.prov_title), onBack) {
         ProviderPage(vm, route.id ?: NEW_PROVIDER, route.preset, onPreset = { open(ProviderRoute(preset = it)) }, onDone = onDone)
     }
+
+/** 远程主机 → a host (edit), or a new one (null). */
+@Composable
+fun RemoteHostScreen(id: String?, onBack: () -> Unit, vm: RemoteViewModel = hiltViewModel()) =
+    SettingsPage(stringResource(if (id == null) R.string.remote_add else R.string.remote_edit), onBack) { RemoteHostPage(vm, id, onDone = onBack) }
 
 /** 会话模式 → a mode (view / edit / new); [onReplace] swaps this page for another mode (复制). */
 @Composable

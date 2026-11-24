@@ -96,6 +96,13 @@ fun HomeScreen(vm: HomeViewModel, onSettings: (String?) -> Unit, onAutomation: (
                     onSettings = { section -> scope.launch { drawer.close() }; onSettings(section) },
                     onClose = { scope.launch { drawer.close() } },
                     onRename = vm::rename, onPin = vm::pin, onMute = vm::mute, onArchive = vm::archive, onDelete = vm::delete,
+                    workspace = {
+                        val ws by vm.workspace.collectAsStateWithLifecycle()
+                        val hosts by vm.hosts.collectAsStateWithLifecycle()
+                        val states by vm.remoteStates.collectAsStateWithLifecycle()
+                        WorkspaceSwitcher(ws, hosts, states, onSelect = { vm.setWorkspace(it) },
+                            onManage = { scope.launch { drawer.close() }; onSettings("Remote") })
+                    },
                 )
             }
         },
@@ -129,6 +136,9 @@ private fun ConversationPane(vm: HomeViewModel, onMenu: () -> Unit, onSettings: 
             IconBtn(R.drawable.dsw_panel_left_outline, onMenu, size = 40.dp, iconSize = 18.dp, tint = c.labelPrimary, contentDescription = stringResource(R.string.open_sidebar))
             Text(if (empty) "" else live.title.ifBlank { conv.turns.firstOrNull()?.user?.text?.lineSequence()?.firstOrNull() ?: stringResource(R.string.new_session) },
                 Modifier.weight(1f).padding(horizontal = 4.dp), style = DshType.s14m, color = c.labelPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // Remote mode (#51): which computer this conversation runs on, and its link.
+            val remote by vm.remote.collectAsStateWithLifecycle()
+            remote?.let { RemoteBadge(it, onDisconnect = { vm.disconnectRemote() }, onHostSettings = { onSettings("Remote") }) }
             // 对话 / 轨迹: one icon toggle instead of a segmented control, so the title keeps its room at 360 dp.
             if (!empty) {
                 val traj = view == SessionView.Trajectory
@@ -180,6 +190,11 @@ private fun EmptyHero(vm: HomeViewModel, composer: ComposerState, settings: Sett
             Text(stringResource(R.string.hero_title), style = DshType.xl24.copy(fontSize = DshType.xl24.fontSize * 1.08f, fontWeight = androidx.compose.ui.text.font.FontWeight(500)),
                 color = c.labelPrimary, textAlign = TextAlign.Center)
         }
+        // Remote mode (#51): the new conversation runs on this computer.
+        val remote by vm.remote.collectAsStateWithLifecycle()
+        remote?.host?.let { h ->
+            Text(stringResource(R.string.remote_hero, h.name), Modifier.padding(top = 8.dp), style = DshType.xs13, color = c.labelTertiary)
+        }
         Spacer(Modifier.height(28.dp))
         ComposerSlot(vm, composer, settings, live, conv, hero = true, onAutomation = onAutomation, onManageModes = { onSettings("Modes") })
     }
@@ -205,6 +220,7 @@ fun ComposerSlot(vm: ConversationController, composer: ComposerState, settings: 
     val context = androidx.compose.ui.platform.LocalContext.current
     val modelChangePending by vm.modelChangePending.collectAsStateWithLifecycle()
     val model by vm.model.collectAsStateWithLifecycle()
+    val remote by vm.remote.collectAsStateWithLifecycle()
     val send = {
         val text = prepare(composer.outgoingText(context))
         val images = composer.images.map { it.mime to it.base64 }
@@ -252,12 +268,14 @@ fun ComposerSlot(vm: ConversationController, composer: ComposerState, settings: 
             showChips = showChips,
             canSendEmpty = canSendEmpty,
             modelChangePending = modelChangePending,
-            mode = settings.mode(live.modeId),
+            // A computer's dsh (#51) has no session modes (plugin-mode is the phone engine's).
+            mode = if (remote == null) settings.mode(live.modeId) else null,
             modes = settings.allModes,
             modeLocked = !live.modeChangeable,
             onMode = vm::setMode,
             onManageModes = onManageModes,
             voice = voice,
+            remoteLabel = remote?.label,
         )
     }
 }

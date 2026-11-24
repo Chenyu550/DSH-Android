@@ -36,7 +36,13 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.first
+import io.github.jackwener.dsh.core.remote.RemoteEngines
+import io.github.jackwener.dsh.core.remote.RemoteHost
+import io.github.jackwener.dsh.core.remote.RemoteHostStore
+import io.github.jackwener.dsh.core.remote.RemoteState
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
@@ -61,6 +67,8 @@ open class ConversationController(
     protected val store: SessionStore,
     private val engine: EngineManager,
     private val settingsRepo: SettingsRepository,
+    protected val remoteHosts: RemoteHostStore,
+    protected val remotes: RemoteEngines,
 ) : ViewModel() {
     private val sessionId = MutableStateFlow(store.newSessionId())
     val id: String get() = sessionId.value
@@ -93,6 +101,11 @@ open class ConversationController(
         .map { Projector.conversation(it.events, it.running) }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.Eagerly, Conversation())
+
+    /** Remote mode (#51): the computer this conversation runs on and its link, or null (this phone). */
+    val remote: StateFlow<RemoteView?> = combine(live.map { it.hostId }.distinctUntilChanged(), remoteHosts.hosts, remotes.states) { hostId, hosts, states ->
+        hostId?.let { id -> RemoteView(id, hosts.firstOrNull { it.id == id }, states[id] ?: RemoteState.Idle) }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val view = MutableStateFlow(SessionView.Chat)
     /** Trajectory record to scroll to and inspect (set by a tool row's 查看 pill). */
@@ -134,7 +147,9 @@ open class ConversationController(
     /** The composer took [SessionLive.restoredDraft] (queued messages handed back after a stop or failure). */
     fun consumeRestoredDraft() = store.consumeRestoredDraft(sessionId.value)
 
-    fun stop() = viewModelScope.launch { store.stop() }
+    fun stop() = viewModelScope.launch { store.stop(sessionId.value) }
+    /** Ends the link to this conversation's computer (its runs stop); the next message connects again. */
+    fun disconnectRemote() = viewModelScope.launch { remote.value?.let { store.stop(sessionId.value); remotes.reset(it.hostId) } }
     fun retry(e: TurnError) = viewModelScope.launch { store.retry(sessionId.value, e) }
     /** 继续 on a turn's end card (work remains). */
     fun continueTask() = viewModelScope.launch { store.continueTask(sessionId.value) }
@@ -177,7 +192,31 @@ class HomeViewModel @Inject constructor(
     engine: EngineManager,
     settings: SettingsRepository,
     private val agentScreen: AgentScreen,
-) : ConversationController(store, engine, settings) {
+    remoteHosts: RemoteHostStore,
+    remotes: RemoteEngines,
+) : ConversationController(store, engine, settings, remoteHosts, remotes) {
+    /** The workspace the drawer lists and new conversations run in (#51): null = this phone, else a remote host id. */
+    val workspace: StateFlow<String?> = remoteHosts.workspace.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val hosts: StateFlow<List<RemoteHost>> = remoteHosts.hosts.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val remoteStates: StateFlow<Map<String, RemoteState>> = remotes.states
+
+    init {
+        viewModelScope.launch { store.setHost(id, remoteHosts.workspace.first()) }
+    }
+
+    override fun newSession() {
+        super.newSession()
+        val id = this.id
+        viewModelScope.launch { store.setHost(id, remoteHosts.workspace.first()) }
+    }
+
+    /** Switches the workspace; the screen moves to a new conversation there. */
+    fun setWorkspace(hostId: String?) = viewModelScope.launch {
+        if (hostId == workspace.value) return@launch
+        remoteHosts.setWorkspace(hostId)
+        newSession()
+    }
+
     /** The open conversation's agent display (live preview), or null. */
     val agentDisplay: StateFlow<Int?> = combine(currentId, agentScreen.displays) { id, m -> m[id] }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -190,7 +229,9 @@ class HomeViewModel @Inject constructor(
     /** 我来接管: the agent screen's app moves to the user's screen; the agent stops acting there until the user writes. */
     fun takeOverAgentScreen(onDone: (Boolean) -> Unit) = viewModelScope.launch { onDone(agentScreen.handToUser(id, byUser = true) != null) }
 
-    val sessions: StateFlow<List<SessionEntity>> = store.conversations.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    /** The workspace's conversations (#51): this phone's, or one computer's. */
+    val sessions: StateFlow<List<SessionEntity>> = combine(store.conversations, remoteHosts.workspace) { rows, ws -> rows.filter { it.hostId == ws } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val rowStatus: StateFlow<Map<String, RowStatus>> = store.status
 
     /** Text to drop into the composer (e.g. "新建" on the automation screen). */
@@ -217,4 +258,12 @@ class QuickViewModel @Inject constructor(
     engine: EngineManager,
     settings: SettingsRepository,
     @ApplicationContext val context: Context,
-) : ConversationController(store, engine, settings)
+    remoteHosts: RemoteHostStore,
+    remotes: RemoteEngines,
+) : ConversationController(store, engine, settings, remoteHosts, remotes)
+
+/** The computer a remote conversation runs on (#51): [host] null once its entry was deleted. */
+data class RemoteView(val hostId: String, val host: RemoteHost?, val state: RemoteState) {
+    /** The composer's model label: host · model. */
+    val label: String get() = listOfNotNull(host?.name, host?.model).joinToString(" · ")
+}

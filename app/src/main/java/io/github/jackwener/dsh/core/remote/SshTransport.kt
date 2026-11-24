@@ -1,11 +1,15 @@
 package io.github.jackwener.dsh.core.remote
 
+import org.apache.sshd.client.ClientBuilder
 import org.apache.sshd.client.SshClient
 import org.apache.sshd.client.channel.ChannelExec
 import org.apache.sshd.client.config.hosts.HostConfigEntryResolver
 import org.apache.sshd.client.keyverifier.ServerKeyVerifier
 import org.apache.sshd.client.session.ClientSession
+import org.apache.sshd.common.BaseBuilder
+import org.apache.sshd.common.NamedFactory
 import org.apache.sshd.common.NamedResource
+import org.apache.sshd.common.kex.BuiltinDHFactories
 import org.apache.sshd.common.config.keys.FilePasswordProvider
 import org.apache.sshd.common.config.keys.KeyUtils
 import org.apache.sshd.common.config.keys.PublicKeyEntry
@@ -52,7 +56,7 @@ class RemoteException(
 ) : Exception(message, cause) {
     enum class Kind {
         Offline, Dns, Timeout, Refused, Unreachable, HostKeyUnknown, HostKeyChanged, Auth, KeyInvalid, KeyPassphrase,
-        Workdir, NoDsh, DshExited, Initialize, Disconnected, Other,
+        Workdir, NoDsh, DshExited, Initialize, Disconnected, HostMissing, Other,
     }
 }
 
@@ -62,6 +66,31 @@ object HostKeys {
     fun line(key: PublicKey): String = PublicKeyEntry.toString(key)
     fun parse(line: String): PublicKey? = runCatching { PublicKeyEntry.parsePublicKeyEntry(line).resolvePublicKey(null, emptyMap(), null) }.getOrNull()
     fun matches(trusted: String, key: PublicKey): Boolean = parse(trusted)?.let { KeyUtils.compareKeys(it, key) } == true
+}
+
+/**
+ * Key exchanges this device can actually run. MINA offers curve25519 / curve448 (and the post-quantum hybrids built
+ * on X25519) whenever a provider lists XDH, but on Android the key pair and the agreement can come from different
+ * providers that reject each other's keys ("Unsupported key type"), and before Android 13 there is no XDH at all.
+ * So each Montgomery curve is tried once for real; the ECDH (nistp*) and DH group exchanges, which Android has
+ * always had, stay either way.
+ */
+object SshAlgorithms {
+    val kex: List<BuiltinDHFactories> by lazy {
+        val montgomery = mapOf("25519" to works(BuiltinDHFactories.curve25519), "448" to works(BuiltinDHFactories.curve448))
+        BaseBuilder.DEFAULT_KEX_PREFERENCE.filter { f ->
+            f.isSupported && montgomery.none { (curve, ok) -> !ok && (curve in f.getName() || "sntrup" in f.getName()) }
+        }
+    }
+
+    private fun works(f: BuiltinDHFactories): Boolean = f.isSupported && runCatching {
+        val a = f.create()
+        val b = f.create()
+        val ea = a.e
+        val eb = b.e
+        a.setF(eb); b.setF(ea)
+        a.k.contentEquals(b.k)
+    }.getOrDefault(false)
 }
 
 /**
@@ -119,6 +148,7 @@ class SshConnection private constructor(
         fun open(target: SshTarget, command: String): SshConnection {
             var presented: PublicKey? = null
             val client = SshClient.setUpDefaultClient().apply {
+                keyExchangeFactories = NamedFactory.setUpTransformedFactories(false, SshAlgorithms.kex, ClientBuilder.DH2KEX)
                 hostConfigEntryResolver = HostConfigEntryResolver.EMPTY
                 keyIdentityProvider = KeyIdentityProvider.EMPTY_KEYS_PROVIDER
                 serverKeyVerifier = ServerKeyVerifier { _, _, key ->

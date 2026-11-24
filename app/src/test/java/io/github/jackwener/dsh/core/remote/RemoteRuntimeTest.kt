@@ -70,6 +70,8 @@ class RemoteRuntimeTest {
                 u == "me" && acceptedKey?.let { org.apache.sshd.common.config.keys.KeyUtils.compareKeys(it, k) } == true
             }
             commandFactory = org.apache.sshd.server.command.CommandFactory { _, cmd -> ShCommand(cmd, home, bin) }
+            // Same provider mix as the client (Robolectric's Conscrypt next to the JDK's): only key exchanges that work here.
+            keyExchangeFactories = org.apache.sshd.common.NamedFactory.setUpTransformedFactories(false, SshAlgorithms.kex, org.apache.sshd.server.ServerBuilder.DH2KEX)
         }
         server.start()
     }
@@ -230,6 +232,9 @@ class RemoteRuntimeTest {
     }
 
     companion object {
+        // The provider set the app uses on Android (RemoteEngines): Ed25519 through net.i2p, no SunJCE / BouncyCastle wrappers.
+        init { System.setProperty("org.apache.sshd.security.registrars", "org.apache.sshd.common.util.security.eddsa.EdDSASecurityProviderRegistrar") }
+
         /** The SDK subset the app uses, in POSIX sh: initialize, session/prompt (status + event), shutdown; test/env reports what it got. */
         val FAKE_DSH = """
             #!/bin/sh
