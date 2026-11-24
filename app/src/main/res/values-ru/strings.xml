@@ -999,4 +999,17 @@
     <string name="adb_jit_title">Подключи канал ADB, чтобы продолжить</string>
     <string name="adb_jit_body">Для «%1$s» нужен доступ shell. Канал ADB в DSH сопряжён, но сейчас недоступен: включи «Параметры разработчика → Отладка по Wi‑Fi», и работа продолжится сама.</string>
     <string name="adb_jit_alt">Не хочешь ставить Shizuku? Используй «Прямой доступ через ADB» в Настройки → Разрешения телефона.</string>
+    <!-- Reasoning control for third-party models (#46) -->
+    <string name="effort_default">По умолчанию</string>
+    <string name="effort_default_desc">Уровень не задан: используется значение модели по умолчанию</string>
+    <string name="effort_is_default">Уровень модели по умолчанию</string>
+    <string name="prov_reasoning">Управление рассуждением</string>
+    <string name="prov_reasoning_auto">Авто: %1$s</string>
+    <string name="prov_reasoning_auto_unknown">Авто</string>
+    <string name="prov_reasoning_effort">Уровень</string>
+    <string name="prov_reasoning_hint">Определяет, какие уровни предлагает меню модели в поле ввода и как они передаются. «Авто» сопоставляет имя модели со встроенными в движок семействами (Kimi, GLM, Qwen, GPT…); укажите вручную, если своя или переименованная модель не распознаётся: «Уровень» передаёт reasoning_effort (отметьте уровни, которые принимает API); «Рассуждение» — переключатель вкл/выкл, передаётся как enable_thinking или thinking.type; «Нет» не передаёт параметр рассуждения.</string>
+    <string name="prov_reasoning_levels_none">без управления рассуждением</string>
+    <string name="prov_reasoning_levels_unknown">неизвестно (появится после следующего запуска)</string>
+    <string name="prov_reasoning_none">Нет</string>
+    <string name="prov_reasoning_switch">Рассуждение</string>
 </resources>
