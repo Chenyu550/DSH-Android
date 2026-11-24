@@ -7,7 +7,7 @@ import android.os.Bundle
 import android.view.Display
 import android.view.accessibility.AccessibilityNodeInfo
 import dagger.hilt.android.qualifiers.ApplicationContext
-import io.github.jackwener.dsh.core.platform.ShizukuShell
+import io.github.jackwener.dsh.core.platform.DeviceShell
 import io.github.jackwener.dsh.service.DshAccessibilityService
 import io.github.jackwener.dsh.service.DshInputMethodService
 import kotlinx.coroutines.delay
@@ -26,7 +26,7 @@ import javax.inject.Singleton
  *  5. clipboard + ACTION_PASTE on the field (any language; the clipboard keeps the text).
  */
 @Singleton
-class TextInput @Inject constructor(@ApplicationContext private val context: Context, private val shizuku: ShizukuShell) {
+class TextInput @Inject constructor(@ApplicationContext private val context: Context, private val shizuku: DeviceShell) {
 
     /** How text got in, plus what the field shows afterwards (null when it cannot be read back). */
     class Typed(val method: String, val fieldText: String?)
@@ -65,16 +65,16 @@ class TextInput @Inject constructor(@ApplicationContext private val context: Con
             if (changed()) return done("dsh_ime (partial: the field reformatted the text; check it)")
         }
 
-        if (shizuku.available) {
+        if (shizuku.available()) {
             if (text.all { it.code in 0x20..0x7e }) {
                 if (!append && target != null) clear(target)
                 if (shizuku.exec((if (main) "input text " else "input -d $displayId text ") + shellQuote(text.replace(" ", "%s"))).code == 0) {
-                    if (verify(target, text, trustWithoutNode = true)) return done("shizuku_input" + unverified(target))
-                    if (changed()) return done("shizuku_input (partial: the field reformatted the text; check it)")
+                    if (verify(target, text, trustWithoutNode = true)) return done("shell_input" + unverified(target))
+                    if (changed()) return done("shell_input (partial: the field reformatted the text; check it)")
                 }
             } else if (main && viaImeSwitch(text, !append)) {
-                if (verify(target, text, trustWithoutNode = true)) return done("shizuku_ime" + unverified(target))
-                if (changed()) return done("shizuku_ime (partial: the field reformatted the text; check it)")
+                if (verify(target, text, trustWithoutNode = true)) return done("shell_ime" + unverified(target))
+                if (changed()) return done("shell_ime (partial: the field reformatted the text; check it)")
             }
         }
 

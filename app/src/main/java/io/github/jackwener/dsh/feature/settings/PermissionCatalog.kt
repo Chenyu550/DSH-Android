@@ -16,6 +16,7 @@ import android.os.Environment
 import android.os.PowerManager
 import android.provider.Settings
 import io.github.jackwener.dsh.core.model.ToolGroup
+import io.github.jackwener.dsh.core.platform.Termux
 import io.github.jackwener.dsh.service.DshAccessibilityService
 import io.github.jackwener.dsh.service.DshNotificationListener
 
@@ -30,6 +31,8 @@ data class PermissionItem(
     val restrictedSetting: Boolean = false,
     val check: (Context) -> Boolean,
     val intent: (Context) -> Intent? = { null },
+    /** False hides the item from the list (e.g. Termux is not installed, so there is nothing to grant). */
+    val available: (Context) -> Boolean = { true },
 ) {
     fun title(zh: Boolean) = if (zh) titleZh else titleEn
     fun why(zh: Boolean) = if (zh) whyZh else whyEn
@@ -102,6 +105,10 @@ object PermissionCatalog {
                 Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR),
             restrictedSetting = true,
             check = { granted(it, Manifest.permission.READ_CONTACTS) && granted(it, Manifest.permission.READ_SMS) }),
+        // Only offered once Termux is installed (it defines the permission); used by termux_run (#68).
+        PermissionItem("termux", "Termux 命令", "Termux commands", "在你自己的 Termux 里运行命令（termux_run）", "Run commands in your own Termux (termux_run)",
+            setOf(ToolGroup.System), runtime = listOf(Termux.PERMISSION),
+            check = { granted(it, Termux.PERMISSION) }, available = { termuxInstalled(it) }),
         PermissionItem("overlay", "悬浮窗", "Display over other apps", "显示悬浮球", "Show the floating button",
             emptySet(),
             check = { Settings.canDrawOverlays(it) },
@@ -111,6 +118,8 @@ object PermissionCatalog {
     fun forGroups(groups: Set<ToolGroup>) = all.filter { it.groups.any(groups::contains) }
 
     fun byId(id: String) = all.firstOrNull { it.id == id }
+
+    private fun termuxInstalled(c: Context) = runCatching { c.packageManager.getPackageInfo(Termux.PACKAGE, 0); true }.getOrDefault(false)
 
     private fun a11yEnabled(c: Context): Boolean {
         val flat = Settings.Secure.getString(c.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false

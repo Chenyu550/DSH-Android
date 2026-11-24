@@ -17,7 +17,8 @@ import rikka.shizuku.Shizuku
 import javax.inject.Inject
 import javax.inject.Singleton
 
-data class ShellResult(val code: Int, val output: String)
+/** A finished shell command; [via] names the channel that ran it ("Shizuku" or "ADB"). */
+data class ShellResult(val code: Int, val output: String, val via: String = "Shizuku")
 
 /**
  * Thrown when a step needs the shell user and Shizuku is not [ShellState.Ready]. The capability

@@ -415,13 +415,15 @@ interface ToolResult {
   ok: boolean
   content: Array<{ type: "text", text: string } | { type: "image", mimeType: string, data: string /* base64 */ }>
   error?: { code: "not_authorized" | "permission_missing" | "device_locked_timeout" | "waiting_for_user" | "timeout" | "cancelled"
-                 | "invalid_args" | "shizuku_unavailable" | "needs_user" | "failed" | string, message: string }
+                 | "invalid_args" | "shizuku_unavailable" | "needs_user" | "failed"
+                 | "termux_unavailable" | "termux_not_allowed" | "termux_no_reply" | "termux_failed" | string, message: string }
 }
 ```
 
 Descriptions are static: they never carry live state (Shizuku up/down, permissions), because every description
 change re-lists the tools and re-bills the cached prompt. Availability is reported in the call's result (`path=…`,
-"via Shizuku") or error (`shizuku_unavailable`, `permission_missing`). `capability/changed` is only sent when the
+"via Shizuku" / "via ADB": shell-user commands run through Shizuku when ready, else the app's own wireless-debugging
+ADB channel, #71) or error (`shizuku_unavailable` = neither shell channel is usable, `permission_missing`). `capability/changed` is only sent when the
 user changes which tool groups are enabled.
 
 The app is authoritative for: which groups are enabled, runtime permissions, lock-state waiting (a `needsUnlock` call while locked is held by the app, which posts a "continue after unlock" notification; the request resolves after unlock, or with `waiting_for_user` when the budget runs out), and unattended whitelists.
@@ -474,7 +476,8 @@ later, or send an SMS twice after a retry). The rules:
 - `@dsh-android/plugin-mode`: session modes (§2.5): per-conversation tool restriction + guard, skills switch, mode prompt
   section, selection record; deferred tools and `load_tools` (§2.5.1).
 - `@dsh-android/plugin-guard`: hardline command floor for the shell tool (relative paths resolve against the session
-  cwd and any `cd` earlier in the command); approval policy (§2); token/cost budget enforcement from `budget/update`;
+  cwd and any `cd` earlier in the command) and for the device tools that run a command line elsewhere: `adb_shell`
+  (judged from `/`) and `termux_run` (#68; judged from its `cwd`, default and `~` = Termux's home); approval policy (§2); token/cost budget enforcement from `budget/update`;
   system-prompt section describing the phone context and the tool-priority rule (system API > intent/deeplink >
   Shizuku > accessibility clicks), whose "works while locked" examples are derived from `needsUnlock:false`
   descriptors; unattended-run context; post-turn reflection for the App 经验库 (`experience.js`: one tool-free call

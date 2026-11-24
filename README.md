@@ -38,7 +38,7 @@
 1. 从 [Releases](../../releases/latest) 下载 APK 并安装（arm64，Android 10 及以上）。
 2. 登录 DeepSeek 账号，或者填入 [API key](https://platform.deepseek.com/api_keys)；也可以在 设置 → 模型服务 里添加其他服务商。
 3. 直接说要做什么，比如“列出下载目录里最大的 5 个文件”。用到某项权限时，App 会再引导你开启。
-4. 可选：在 设置 → 手机权限 里一键安装 Shizuku，并在 Shizuku 里打开“开机启动（无线调试）”。
+4. 可选：在 设置 → 手机权限 里一键安装 Shizuku，并在 Shizuku 里打开“开机启动（无线调试）”；装不上 Shizuku 的手机（Android 11+）可以用同一页的「直接 ADB 授权」，用无线调试配对码配对一次即可。
 
 ## 能做什么
 
@@ -48,7 +48,7 @@
 - **自动化**：定时执行，或在连上 Wi‑Fi/蓝牙、开始充电、到达某地、收到通知等条件下触发。
 - **其他模型服务**：除 DeepSeek 外，可添加 OpenAI、Claude、Gemini、Grok、OpenRouter、Kimi、智谱 GLM、通义千问、火山方舟、MiniMax、硅基流动、阶跃星辰，或任意 OpenAI 兼容接口；填 key、拉取模型列表即可在模型选择器里切换，推理强度按模型记住，只列出该模型支持的档位。
 - **完整的 dsh**：dsh 原样运行（没有 fork），技能、MCP、子 agent、网页搜索都能用。
-- **不需要 root 或 Termux**：装一个 APK 就能用；Shizuku 可选，能解锁更多系统开关。
+- **不需要 root 或 Termux**：装一个 APK 就能用；Shizuku 或自连 ADB（无线调试配对，无需 Shizuku）可选，能解锁更多系统开关。已经装了 Termux 的话，授权一次后 Agent 也能把命令交给你自己的 Termux 去跑（`termux_run`，和内置环境并列）。
 
 ## 架构
 

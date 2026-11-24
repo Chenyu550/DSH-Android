@@ -460,7 +460,7 @@ private fun PhoneSection(vm: SettingsViewModel, onNotificationApps: () -> Unit) 
     }
     Text(stringResource(R.string.set_phone_desc), Modifier.padding(start = 4.dp, top = 12.dp, bottom = 8.dp), style = DshType.xs13, color = c.labelTertiary)
     SettingsCard {
-        PermissionCatalog.all.forEachIndexed { i, p ->
+        remember(tick) { PermissionCatalog.all.filter { it.available(context) } }.forEachIndexed { i, p ->
             val granted = remember(tick) { p.check(context) }
             SettingsRow(p.title(zh), p.why(zh), divider = i > 0,
                 leading = { StateDot(if (granted) DotKind.Done else DotKind.Idle) },
@@ -486,6 +486,7 @@ private fun PhoneSection(vm: SettingsViewModel, onNotificationApps: () -> Unit) 
     }
     SettingsGroupTitle(stringResource(R.string.shz_group))
     ShellAccessCard()
+    LocalAdbCard(Modifier.padding(top = 8.dp))
     val s by vm.settings.collectAsStateWithLifecycle()
     SettingsCard(Modifier.padding(top = 8.dp)) {
         val degraded = remember { vm.agentScreenDegraded }
