@@ -173,8 +173,12 @@
     <string name="notif_not_finished_generic">Not finished yet; you can continue</string>
     <string name="notif_attention">%1$s: %2$s</string>
     <string name="notif_sessions_summary">%1$d conversations have updates</string>
-    <string name="deep_diving">Deep diving for %1$s ···</string>
-    <string name="deep_diving_activity">%1$s · %2$s ···</string>
+    <string name="run_thinking">Deep diving</string>
+    <string name="run_next_step">Working out the next step (%1$d done)</string>
+    <string name="run_tool">%1$s: %2$s</string>
+    <string name="run_elapsed">%1$s ···</string>
+    <string name="user_msg_expand">Show more</string>
+    <string name="user_msg_collapse">Show less</string>
     <string name="starting_engine">Starting the agent engine…</string>
     <string name="waiting_unlock">Waiting for you to unlock the phone…</string>
     <string name="waiting_network">Waiting for the network to come back…</string>
@@ -926,4 +930,11 @@
     <string name="upd_res_skipped">Skipped %1$s</string>
     <string name="upd_res_failed">Check failed: %1$s</string>
     <string name="upd_view">View</string>
+    <!-- App shortcuts (#82) -->
+    <string name="shortcut_new_short">New chat</string>
+    <string name="shortcut_new_long">New conversation</string>
+    <string name="shortcut_voice_short">Voice task</string>
+    <string name="shortcut_voice_long">Speak a task</string>
+    <string name="shortcut_screen_short">Send screen</string>
+    <string name="shortcut_screen_long">Send current screen</string>
 </resources>

@@ -107,6 +107,8 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- App shortcuts (#82): 新会话 / 语音任务 / 发送当前屏幕, through .feature.quick.ShortcutActivity. -->
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
             <!-- Account sign-in completion page (engine loopback) opened in a browser (用浏览器登录's
                  Custom Tab, or the copied sign-in link) returns here; singleTask clears a Custom Tab on
                  top of this task. The in-app sign-in screen intercepts the link itself. -->
@@ -147,6 +149,16 @@
                 <data android:mimeType="application/zip" />
             </intent-filter>
         </activity-alias>
+
+        <!-- App shortcut trampoline: no window, a task of its own (static shortcuts start with CLEAR_TASK).
+             Exported: some system pickers of app shortcuts start the intent themselves. -->
+        <activity
+            android:name=".feature.quick.ShortcutActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity="io.github.jackwener.dsh.shortcut"
+            android:theme="@android:style/Theme.NoDisplay" />
 
         <activity
             android:name=".feature.quick.QuickActivity"

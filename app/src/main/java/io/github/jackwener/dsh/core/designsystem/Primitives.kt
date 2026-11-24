@@ -15,6 +15,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -346,14 +348,11 @@ fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit, mod
 @Composable
 fun DMenu(
     expanded: Boolean, onDismiss: () -> Unit, modifier: Modifier = Modifier, offset: DpOffset = DpOffset(0.dp, 4.dp),
-    /** false keeps focus (and the keyboard) on the text field underneath, e.g. the "/" command menu. */
-    focusable: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val c = Dsh.colors
     DropdownMenu(
         expanded, onDismiss, modifier.widthIn(min = 200.dp).padding(horizontal = 4.dp), offset = offset,
-        properties = androidx.compose.ui.window.PopupProperties(focusable = focusable),
         shape = Radius.lg, containerColor = if (c.isDark) Color(0xFF303136) else Color(0xFFF8F9FA),
         tonalElevation = 0.dp, shadowElevation = 8.dp,
         border = androidx.compose.foundation.BorderStroke(Hairline, c.borderL2), content = content,
@@ -412,7 +411,10 @@ fun DDialog(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(title, style = DshType.l20, color = c.labelPrimary)
-            CompositionLocalProvider(LocalContentColor provides c.labelSecondary) { content() }
+            // Long content (e.g. the skills found in a repository, #76) scrolls between the fixed title and buttons.
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                CompositionLocalProvider(LocalContentColor provides c.labelSecondary) { content() }
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), content = buttons)
         }
     }

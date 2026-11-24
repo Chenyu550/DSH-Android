@@ -173,8 +173,12 @@
     <string name="notif_not_finished_generic">任务未完成，可以继续</string>
     <string name="notif_attention">%1$s：%2$s</string>
     <string name="notif_sessions_summary">%1$d 个会话有新消息</string>
-    <string name="deep_diving">深度求索中，用时 %1$s ···</string>
-    <string name="deep_diving_activity">%1$s，用时 %2$s ···</string>
+    <string name="run_thinking">深度求索中</string>
+    <string name="run_next_step">思考下一步（已完成 %1$d 步）</string>
+    <string name="run_tool">%1$s：%2$s</string>
+    <string name="run_elapsed">用时 %1$s ···</string>
+    <string name="user_msg_expand">展开全部</string>
+    <string name="user_msg_collapse">收起</string>
     <string name="starting_engine">正在启动智能体引擎…</string>
     <string name="waiting_unlock">等待你解锁手机后继续…</string>
     <string name="waiting_network">等待网络恢复后继续…</string>
@@ -926,4 +930,11 @@
     <string name="upd_res_skipped">已跳过 %1$s</string>
     <string name="upd_res_failed">检查失败：%1$s</string>
     <string name="upd_view">查看</string>
+    <!-- App shortcuts (#82) -->
+    <string name="shortcut_new_short">新会话</string>
+    <string name="shortcut_new_long">新建会话</string>
+    <string name="shortcut_voice_short">语音任务</string>
+    <string name="shortcut_voice_long">说出一个任务</string>
+    <string name="shortcut_screen_short">发送屏幕</string>
+    <string name="shortcut_screen_long">发送当前屏幕</string>
 </resources>

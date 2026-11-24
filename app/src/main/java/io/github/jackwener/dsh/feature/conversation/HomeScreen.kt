@@ -35,6 +35,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +43,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.jackwener.dsh.R
@@ -74,6 +77,11 @@ fun HomeScreen(vm: HomeViewModel, onSettings: (String?) -> Unit, onAutomation: (
     BackHandler(drawer.isOpen) { scope.launch { drawer.close() } }
     // Back in front with a conversation open (e.g. from the launcher after a background run): it is seen now.
     LifecycleResumeEffect(currentId) { vm.markSeen(); onPauseOrDispose {} }
+    // Leaving the app: the floating ball / quick panel continues this conversation (#83); a new empty one is nothing to continue.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) {
+        io.github.jackwener.dsh.core.session.PanelSession.leftApp(context, vm.id.takeIf { !vm.conversation.value.isEmpty })
+    }
     ModalNavigationDrawer(
         drawerState = drawer,
         scrimColor = c.scrim,
@@ -134,13 +142,17 @@ private fun ConversationPane(vm: HomeViewModel, onMenu: () -> Unit, onSettings: 
         }
         val agentDisplay by vm.agentDisplay.collectAsStateWithLifecycle()
         agentDisplay?.takeIf { live.running }?.let { AgentPreview(vm, it) }
+        // Each conversation's list position and tail-following outlive 轨迹 and switching away (#76).
+        val streams = rememberSaveableStateHolder()
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            AnimatedContent(Triple(view, empty, live.sessionId), transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "pane") { (v, isEmpty, _) ->
+            AnimatedContent(Triple(view, empty, live.sessionId), transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "pane") { (v, isEmpty, sid) ->
                 when {
                     v == SessionView.Trajectory -> TrajectoryView(vm)
                     isEmpty -> EmptyHero(vm, composer, settings, live, conv, onAutomation, onSettings)
-                    // One list state per session (and per crossfading pane), so positions never leak across sessions.
-                    else -> ChatStream(conv, live, settings.workDetails, rememberLazyListState(), onInspect = vm::inspect, onRetry = vm::retry, onContinue = { vm.continueTask() }, onOpenSettings = { onSettings(it) }, modifier = Modifier.fillMaxSize())
+                    // One list state per session, so positions never leak across sessions.
+                    else -> streams.SaveableStateProvider("chat/$sid") {
+                        ChatStream(conv, live, settings.workDetails, rememberLazyListState(), onInspect = vm::inspect, onRetry = vm::retry, onContinue = { vm.continueTask() }, onOpenSettings = { onSettings(it) }, modifier = Modifier.fillMaxSize())
+                    }
                 }
             }
         }

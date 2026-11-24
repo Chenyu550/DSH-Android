@@ -14,7 +14,8 @@ object TapTargets {
     /**
      * A plain ball tap: the conversation that waits for the user, else the running one (the one the
      * capsule follows, [focused]), so a tap during a background run never starts a new conversation.
-     * A run started in the quick panel ([panelSession]) reopens there; nothing running = the panel.
+     * A run started in the quick panel ([panelSession]) reopens there; nothing running = the panel, which
+     * continues the recent conversation of the panel or the app (PanelSession.reopen, #83).
      */
     fun ball(status: Map<String, RowStatus>, focused: String?, panelSession: String?): TapTarget {
         val id = AgentStatus.focus(status, focused) ?: return TapTarget.Panel()

@@ -29,10 +29,32 @@ class PanelSessionTest {
 
     @Test fun `reopens the recent or busy panel conversation`() {
         val now = 1_000_000_000L
-        assertEquals("s", PanelSession.reopenable("s", now - 60_000, now, idle))
-        assertNull(PanelSession.reopenable("s", now - PanelSession.RECENT_MS, now, idle))
-        assertEquals("s", PanelSession.reopenable("s", 0, now) { it == "s" })
-        assertNull(PanelSession.reopenable(null, now, now) { true })
+        fun one(id: String?, at: Long) = listOf(id to at)
+        assertEquals("s", PanelSession.reopenable(one("s", now - 60_000), now, idle))
+        assertNull(PanelSession.reopenable(one("s", now - PanelSession.RECENT_MS), now, idle))
+        assertEquals("s", PanelSession.reopenable(one("s", 0), now) { it == "s" })
+        assertNull(PanelSession.reopenable(one(null, now), now) { true })
+    }
+
+    @Test fun `the conversation left in the app is continued by the next summon (#83)`() {
+        val now = 1_000_000_000L
+        // Minimized in the app a minute ago, the panel used earlier: the app's one.
+        assertEquals("app", PanelSession.reopenable(listOf("panel" to now - 300_000, "app" to now - 60_000), now, idle))
+        // The panel used after leaving the app: the panel's one.
+        assertEquals("panel", PanelSession.reopenable(listOf("panel" to now - 30_000, "app" to now - 60_000), now, idle))
+        // Both long ago: a new conversation, unless one still runs.
+        assertNull(PanelSession.reopenable(listOf("panel" to 0L, "app" to 0L), now, idle))
+        assertEquals("panel", PanelSession.reopenable(listOf("panel" to 0L, "app" to 1L), now) { it == "panel" })
+
+        PanelSession.leftApp(app, "b")
+        assertEquals("b", PanelSession.reopen(app, System.currentTimeMillis(), idle))
+        // It is not the panel's own run (a run started in the app reopens in the app, #39).
+        assertNull(PanelSession.last(app))
+        PanelSession.leftApp(app, null)
+        assertNull(PanelSession.reopen(app, System.currentTimeMillis(), idle))
+        PanelSession.leftApp(app, "b")
+        PanelSession.forget(app, "b")
+        assertNull(PanelSession.reopen(app, System.currentTimeMillis(), idle))
     }
 
     @Test fun `a deleted panel conversation is never reopened`() {

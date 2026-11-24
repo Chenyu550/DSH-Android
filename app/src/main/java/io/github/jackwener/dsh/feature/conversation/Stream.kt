@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +41,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -83,8 +96,14 @@ import kotlinx.coroutines.launch
 
 /**
  * The message stream (dsh ChatView): user bubbles, per-turn header, folded process rows, plain
- * markdown replies, error rows and the running whale. Follows the tail while within 24 dp of
- * the bottom; any manual scroll stops following until "回到底部".
+ * markdown replies, error rows and the running whale.
+ *
+ * Follows the tail: while following, the list is kept at the bottom whenever anything below the
+ * viewport grows — new events, and also items that lay out late (markdown parses off the main
+ * thread, so a reopened conversation's replies grow after the first frame; a one-shot scroll on
+ * open used to land mid-conversation, #76). Dragging the list stops following unless it comes to
+ * rest at the bottom; reaching the bottom or "回到底部" follows again. Following is saved with the
+ * list position, so returning to the conversation shows the latest, or where the user was reading.
  */
 @Composable
 fun ChatStream(
@@ -100,16 +119,34 @@ fun ChatStream(
     compact: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
-    var follow by remember { mutableStateOf(true) }
+    var follow by rememberSaveable { mutableStateOf(true) }
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
-    LaunchedEffect(listState.isScrollInProgress) { if (listState.isScrollInProgress) follow = atBottom }
     LaunchedEffect(atBottom) { if (atBottom) follow = true }
-    val lastIndex = conv.turns.size + live.steers.size
+    // One stream shown for another conversation (the quick panel): its latest.
+    var shown by rememberSaveable { mutableStateOf(live.sessionId) }
+    LaunchedEffect(live.sessionId) { if (shown != live.sessionId) { shown = live.sessionId; follow = true } }
+    // A drag stops following; where the scroll comes to rest (after any fling) decides.
+    LaunchedEffect(listState) {
+        var dragged = false
+        launch { listState.interactionSource.interactions.collect { if (it is DragInteraction.Start) { dragged = true; follow = false } } }
+        snapshotFlow { listState.isScrollInProgress }.collect { scrolling -> if (!scrolling && dragged) { dragged = false; follow = !listState.canScrollForward } }
+    }
+    // A tap in the list (opening a step group, a long message) grows it under the finger: keep the view
+    // where the user looks until new content arrives.
+    var hold by remember { mutableStateOf(false) }
     val tailKey = conv.turns.lastOrNull()?.let { it.blocks.size to it.status } to (live.running to live.steers.size)
-    LaunchedEffect(tailKey, live.sessionId) { if (follow && lastIndex >= 0) listState.scrollToItem(lastIndex, Int.MAX_VALUE / 2) }
+    LaunchedEffect(tailKey) { hold = false }
+    // Keep the tail in view while following, whatever made the content grow.
+    LaunchedEffect(listState) {
+        snapshotFlow { follow && !hold && listState.canScrollForward && !listState.isScrollInProgress }.collect { pin ->
+            if (pin) listState.layoutInfo.totalItemsCount.takeIf { it > 0 }?.let { listState.scrollToItem(it - 1, Int.MAX_VALUE / 2) }
+        }
+    }
+    val lastIndex = conv.turns.size + live.steers.size
 
     Box(modifier) {
-        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
+        LazyColumn(Modifier.fillMaxSize().pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial); hold = true } },
+            state = listState, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)) {
             items(conv.turns, key = { it.key }) { turn ->
                 val isLast = turn === conv.turns.last()
                 TurnView(turn, isLast, live, details, onInspect, onRetry, onOpenSettings, onContinue, compact)
@@ -125,7 +162,7 @@ fun ChatStream(
         AnimatedVisibility(!follow && !atBottom, Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 12.dp), enter = fadeIn(), exit = fadeOut()) {
             val c = Dsh.colors
             Box(Modifier.size(34.dp).elevated(CircleShape, c.borderL2).clip(CircleShape).background(c.floating)
-                .pressable({ follow = true; scope.launch { listState.animateScrollToItem(lastIndex, Int.MAX_VALUE / 2) } }, CircleShape),
+                .pressable({ follow = true; hold = false; scope.launch { listState.animateScrollToItem(lastIndex, Int.MAX_VALUE / 2) } }, CircleShape),
                 contentAlignment = Alignment.Center) {
                 Chevron(size = 16.dp, tint = c.labelSecondary)
                 val label = stringResource(R.string.back_to_bottom)
@@ -232,10 +269,7 @@ private fun UserMessage(u: UserMsg, compact: Boolean) {
                 if (u.files > 0) Tag(stringResource(R.string.files_n, u.files))
             }
         }
-        if (u.text.isNotBlank()) SelectionContainer {
-            Text(u.text, Modifier.widthIn(max = maxW).clip(Radius.xl).background(c.bubble).padding(horizontal = 16.dp, vertical = 10.dp),
-                style = DshType.s14, color = c.labelPrimary)
-        }
+        if (u.text.isNotBlank()) UserBubble(u.text, Modifier.widthIn(max = maxW))
         if (!compact) Row(Modifier.padding(top = 6.dp).height(28.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(Fmt.stamp(context, u.time), style = DshType.xs13, color = c.labelTertiary)
             IconBtn(R.drawable.dsw_copy_outline, { copyText(context, u.text) }, iconSize = 15.dp, tint = c.labelTertiary, contentDescription = stringResource(R.string.copy_message))
@@ -243,15 +277,49 @@ private fun UserMessage(u: UserMsg, compact: Boolean) {
     }
 }
 
+/**
+ * The user's words in a bubble, as markdown (#85) with every line break kept: what was typed or pasted
+ * keeps its shape. A long one (#76) is folded to [USER_FOLD_LINES] lines with 展开全部 / 收起.
+ */
+@Composable
+private fun UserBubble(text: String, modifier: Modifier = Modifier) {
+    val c = Dsh.colors
+    val density = LocalDensity.current
+    val foldPx = with(density) { (DshType.body.lineHeight * USER_FOLD_LINES).roundToPx() + 12.dp.roundToPx() }
+    var expanded by rememberSaveable(text) { mutableStateOf(false) }
+    var long by remember(text) { mutableStateOf(false) }
+    val folded = long && !expanded
+    Column(modifier.clip(Radius.xl).background(c.bubble).padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Box(Modifier.clipToBounds()
+            .drawWithContent {
+                drawContent()
+                if (folded) drawRect(Brush.verticalGradient(listOf(Color.Transparent, c.bubble), startY = size.height - 28.dp.toPx(), endY = size.height))
+            }
+            .layout { m, cs ->
+                val p = m.measure(cs.copy(maxHeight = Constraints.Infinity))
+                // Fold only what is clearly longer: hiding one or two lines behind a button helps no one.
+                val isLong = p.height > foldPx * 3 / 2
+                if (isLong != long) long = isLong
+                layout(p.width, if (isLong && !expanded) foldPx else p.height) { p.place(0, 0) }
+            }) {
+            SelectionContainer { DshMarkdown(text, breaks = true) }
+        }
+        if (long) Text(stringResource(if (expanded) R.string.user_msg_collapse else R.string.user_msg_expand),
+            Modifier.padding(top = 2.dp, bottom = 4.dp).clip(Radius.sm).pressable({ expanded = !expanded }, Radius.sm).padding(vertical = 2.dp),
+            style = DshType.xs13m, color = c.labelSecondary)
+    }
+}
+
+/** Lines a long user message shows while folded. */
+private const val USER_FOLD_LINES = 5
+
 /** A message steered into the running turn that dsh has not logged yet: the user bubble, dimmed, with its state. */
 @Composable
 private fun PendingSteer(m: SteerMessage) {
-    val c = Dsh.colors
     val maxW = (LocalConfiguration.current.screenWidthDp * 0.82f).dp
     Column(Modifier.fillMaxWidth().padding(bottom = 12.dp).alpha(0.6f), horizontalAlignment = Alignment.End) {
         if (m.images > 0) Tag(stringResource(R.string.images_n, m.images), modifier = Modifier.padding(bottom = 8.dp))
-        if (m.text.isNotBlank()) Text(m.text, Modifier.widthIn(max = maxW).clip(Radius.xl).background(c.bubble).padding(horizontal = 16.dp, vertical = 10.dp),
-            style = DshType.s14, color = c.labelPrimary)
+        if (m.text.isNotBlank()) UserBubble(m.text, Modifier.widthIn(max = maxW))
         Spacer(Modifier.height(6.dp))
         Tag(stringResource(R.string.steer_pending), Tone.Neutral)
     }
@@ -379,7 +447,33 @@ private fun EndCard(turn: Turn, end: EndReason, canContinue: Boolean, onContinue
     }
 }
 
-/** dsh RunningStatus: whale + "深度求索中，用时 …" (or the running tool's activity, "正在读取屏幕，用时 …") in deep-diving blue with shimmer, ticking each second. */
+/**
+ * What a running turn is doing, for the status line (#76). dsh logs a step only when it ends, so between
+ * tool calls the model is reading the results and writing its next step: that is said, with the count of
+ * steps done, instead of the bare 深度求索中 a long multi-tool run used to show throughout.
+ */
+sealed interface RunPhase {
+    /** No tool yet: the model works on the request. */
+    data object Thinking : RunPhase
+    /** A tool call runs. */
+    data class Tool(val tool: Block.Tool) : RunPhase
+    /** Between steps: [done] tool calls have finished; the model decides the next one. */
+    data class NextStep(val done: Int) : RunPhase
+
+    companion object {
+        fun of(turn: Turn?): RunPhase {
+            val blocks = turn?.takeIf { it.status == TurnStatus.Running }?.blocks ?: return Thinking
+            (blocks.lastOrNull { it is Block.Tool && it.state == ToolState.Running } as Block.Tool?)?.let { return Tool(it) }
+            val done = blocks.count { it is Block.Tool }
+            return if (done == 0) Thinking else NextStep(done)
+        }
+    }
+}
+
+/**
+ * dsh RunningStatus: whale + what the run does now ([RunPhase]: 深度求索中 / 正在执行命令：npm install / 思考下一步)
+ * in deep-diving blue with shimmer, the elapsed time after it, ticking each second.
+ */
 @Composable
 fun RunningIndicator(live: SessionLive, lastTurn: Turn?) {
     val c = Dsh.colors
@@ -387,6 +481,7 @@ fun RunningIndicator(live: SessionLive, lastTurn: Turn?) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(1000); now = System.currentTimeMillis() } }
     val start = lastTurn?.takeIf { it.status == TurnStatus.Running }?.let { it.user?.time ?: it.startTime } ?: live.runStartedAt ?: now
+    var working = false
     val text = when {
         live.startingEngine -> stringResource(R.string.starting_engine)
         live.waitingForUnlock -> stringResource(R.string.waiting_unlock)
@@ -395,17 +490,24 @@ fun RunningIndicator(live: SessionLive, lastTurn: Turn?) {
         live.approval != null || live.permission != null -> stringResource(R.string.waiting_approval_inline)
         live.question != null -> stringResource(R.string.waiting_answer_inline)
         else -> {
-            // A tool is running: name what it does (正在读取屏幕); otherwise the model is thinking / writing.
-            val tool = lastTurn?.takeIf { it.status == TurnStatus.Running }?.blocks?.lastOrNull { it is Block.Tool && it.state == ToolState.Running } as Block.Tool?
-            if (tool != null) stringResource(R.string.deep_diving_activity, stringResource(ToolPresentation.info(tool.name).activity.live), Fmt.duration(context, now - start))
-            else stringResource(R.string.deep_diving, Fmt.duration(context, now - start))
+            working = true
+            when (val phase = RunPhase.of(lastTurn)) {
+                RunPhase.Thinking -> stringResource(R.string.run_thinking)
+                is RunPhase.NextStep -> stringResource(R.string.run_next_step, phase.done)
+                is RunPhase.Tool -> {
+                    val activity = stringResource(ToolPresentation.info(phase.tool.name).activity.live)
+                    ToolPresentation.summary(context, phase.tool)?.lineSequence()?.firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+                        ?.let { stringResource(R.string.run_tool, activity, it.take(60)) } ?: activity
+                }
+            }
         }
     }
     Column(Modifier.padding(top = 4.dp)) {
         if (lastTurn?.blocks?.isNotEmpty() == true) HDivider(Modifier.padding(bottom = 4.dp))
         Row(Modifier.height(28.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             SwimmingWhale(14.dp, c.deepDiving)
-            ShimmerText(text, DshType.xxs12.copy(lineHeight = DshType.xxs12.lineHeight), c.deepDiving, true, highlight = c.deepDivingShimmer)
+            ShimmerText(text, DshType.xxs12.copy(lineHeight = DshType.xxs12.lineHeight), c.deepDiving, true, Modifier.weight(1f, fill = false), highlight = c.deepDivingShimmer)
+            if (working) Text(stringResource(R.string.run_elapsed, Fmt.duration(context, now - start)), style = DshType.xxs12, color = c.labelTertiary, maxLines = 1)
         }
     }
 }

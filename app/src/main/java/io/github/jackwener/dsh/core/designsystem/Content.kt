@@ -49,9 +49,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
+import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.elements.MarkdownCheckBox
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
+import com.mikepenz.markdown.model.markdownAnnotator
+import com.mikepenz.markdown.model.markdownAnnotatorConfig
 import com.mikepenz.markdown.model.markdownPadding
 import io.github.jackwener.dsh.R
 import kotlinx.serialization.json.JsonArray
@@ -70,9 +74,11 @@ fun copyText(context: Context, text: String) {
 /**
  * dsh MarkdownText: 14/24 body, h1 21/30 … h4 14/24, R16 code blocks on the code-block fill,
  * inline code on the inline-code fill. [compact] is the thinking style (13/20 tertiary).
+ * [breaks]: every line break is kept (what people type, e.g. a user's message), not only paragraph breaks.
  */
 @Composable
-fun DshMarkdown(text: String, modifier: Modifier = Modifier, compact: Boolean = false, color: Color = if (compact) Dsh.colors.labelTertiary else Dsh.colors.labelPrimary) {
+fun DshMarkdown(text: String, modifier: Modifier = Modifier, compact: Boolean = false, color: Color = if (compact) Dsh.colors.labelTertiary else Dsh.colors.labelPrimary,
+                breaks: Boolean = false) {
     val c = Dsh.colors
     val body = (if (compact) DshType.xs13 else DshType.body).copy(color = color)
     fun h(size: Int, line: Int, w: Int) = body.copy(fontSize = size.sp, lineHeight = line.sp, fontWeight = FontWeight(w))
@@ -91,6 +97,11 @@ fun DshMarkdown(text: String, modifier: Modifier = Modifier, compact: Boolean = 
             table = body.copy(fontSize = 13.sp, lineHeight = 22.sp),
         ),
         padding = markdownPadding(block = if (compact) 2.dp else 6.dp, codeBlock = androidx.compose.foundation.layout.PaddingValues(14.dp, 10.dp)),
+        annotator = markdownAnnotator(markdownAnnotatorConfig(eolAsNewLine = breaks)),
+        components = markdownComponents(
+            checkbox = { MarkdownCheckBox(it.content, it.node, it.typography.text) },
+            table = { DshTable(it.content, it.node, it.typography.table) },
+        ),
         modifier = modifier,
     )
 }
