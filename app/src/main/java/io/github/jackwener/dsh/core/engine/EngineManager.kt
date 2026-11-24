@@ -157,7 +157,10 @@ class EngineManager @Inject constructor(
         renderProfilePatch(st.providers, webSearch(st, hasKey), io.github.jackwener.dsh.core.provider.appProductToken(io.github.jackwener.dsh.BuildConfig.VERSION_NAME),
             // Plugins' own sessions take the default (the stored levels: the patch must not depend on what this process reported).
             defaultModel = SessionModels.route(SessionModels.default(st), st, st.reasoningCatalog, deepSeekRoute(hasKey))),
-        io.github.jackwener.dsh.core.extensions.ExtensionsEngineInputs.patchRows(st.mcpServers, File(context.filesDir, "dsh-home").path))
+        io.github.jackwener.dsh.core.extensions.ExtensionsEngineInputs.patchRows(st.mcpServers, File(context.filesDir, "dsh-home").path) +
+            // 自动生成对话标题 / 标题模型 (#89).
+            io.github.jackwener.dsh.core.session.SessionTitles.patchRow(st,
+                io.github.jackwener.dsh.core.session.SessionTitles.pinned(st)?.let { SessionModels.route(it, st, st.reasoningCatalog, deepSeekRoute(hasKey)) }))
 
     /** Provider keys and secret header values, plus the extensions' environment (plugin registries, MCP header secrets): env var name → value. */
     private fun providerKeys(st: io.github.jackwener.dsh.core.data.Settings): Map<String, String> {

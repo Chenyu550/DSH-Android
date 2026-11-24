@@ -510,6 +510,26 @@ class SessionStore @Inject constructor(
     // ---- session management ----------------------------------------------------------------------
 
     suspend fun rename(sessionId: String, title: String) { dao.setTitle(sessionId, title); mutate(sessionId) { it.copy(title = title) } }
+
+    /**
+     * The user's own title (侧栏 → 重命名): recorded as `app/title`, so an automatic title (#89) never
+     * replaces it, and pinned in a running engine (`android/session/title`) so a title call still
+     * waiting for the first reply is dropped there too.
+     */
+    suspend fun renameByUser(sessionId: String, title: String) {
+        appendLocal(sessionId, USER_TITLE, buildJsonObject { put("title", title) })
+        rename(sessionId, title)
+        engine.sdkIfReady()?.let { sdk ->
+            runCatching { sdk.request("android/session/title", buildJsonObject { put("sessionId", sessionId); put("title", title) }) }
+                .onFailure { android.util.Log.i(TAG, "android/session/title: ${it.message}") }
+        }
+    }
+
+    /** An engine `session/title` (dsh's fallback from the first words, then the model's title, #89): taken unless the user named the conversation. */
+    private suspend fun onEngineTitle(sessionId: String, title: String) {
+        if (flowOf(sessionId).value.events.any { it.type == USER_TITLE }) return
+        rename(sessionId, title)
+    }
     suspend fun setPinned(sessionId: String, pinned: Boolean) = dao.setPinned(sessionId, pinned)
     suspend fun setArchived(sessionId: String, archived: Boolean) = dao.setArchived(sessionId, archived)
     /** 免打扰: no notification when its turns finish (cards that wait for the user still notify, see SessionNotices). */
@@ -668,7 +688,7 @@ class SessionStore @Inject constructor(
                 else noteBackgroundSession(sessionId)
                 val logged = LoggedEvent(seq, type, time, data)
                 mutate(sessionId) { s -> if (s.events.any { it.seq == seq }) s else s.copy(events = s.events + logged).withLogged(logged) }
-                if (type == "session/title") data.s("title")?.let { rename(sessionId, it) }
+                if (type == "session/title") data.s("title")?.let { onEngineTitle(sessionId, it) }
                 if (type == "assistant/message" || type == "assistant/attempt") recordUsage(data)
             }
             "session.status" -> {
@@ -1033,8 +1053,12 @@ class SessionStore @Inject constructor(
         /** Model error codes of a request that could not reach the provider (dsh LlmError). */
         val NETWORK_CODES = setOf("TRANSPORT", "TIMEOUT")
 
+        /** App-local record of a user rename (#89). */
+        const val USER_TITLE = "app/title"
         /** Log-only records the phone UI never shows; they carry the whole prompt and tool schema. */
         val UNLOGGED = setOf("request/header", "request/context", "system/message", "developer/message", "session/end-seed",
+            // The title call's request (#89): it repeats the first message and reply.
+            "session/title-llm-request",
             // plugin-mode's selection record; the session row already holds the mode.
             "plugin:android-mode/selected")
 

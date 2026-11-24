@@ -193,6 +193,7 @@ grep -q 'patch 15' "$NM/@deepseek-ai/dsh-http-proxy/lib/index.js" || die "http-p
 grep -q 'patch 24' "$NM/@deepseek-ai/dsh-http-proxy/lib/index.js" && grep -q 'patch 24' "$NM/@snnh/dsh-llm-service-lite/lib/index.js" || die "proxy direct-fallback patch (24) missing"
 grep -q 'appendPluginRecord' "$NM/@deepseek-ai/dsh-session/lib/index.js" || die "dsh-session lacks appendPluginRecord (plugin-mode records its selection with it)"
 [[ -f "$NM/@dsh-android/plugin-mode/index.js" ]] || die "plugin-mode missing"
+grep -q 'executeSessionTitleLlm' "$NM/@deepseek-ai/dsh-session-title-llm/lib/index.js" || die "dsh-session-title-llm missing (plugin-guard session-title.js runs its title calls through it)"
 [[ -f "$NM/@dsh-android/bundle-android/main.mjs" ]] || die "engine entry main.mjs missing"
 [[ -f "$NM/@dsh-android/plugin-extensions/pnpmfile.cjs" && -s "$NM/@dsh-android/plugin-extensions/installation-packages.json" ]] || die "plugin-extensions gate missing"
 grep -q 'js patch 19' "$NM/@deepseek-ai/dsh-tools/lib/index.js" && grep -q 'js patch 19' "$NM/@deepseek-ai/dsh-commands/lib/index.js" || die "tool/command owner patch (19) missing"

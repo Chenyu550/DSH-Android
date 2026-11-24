@@ -3,6 +3,7 @@ package io.github.jackwener.dsh.feature.settings
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -41,6 +42,10 @@ import io.github.jackwener.dsh.core.designsystem.DDialog
 import io.github.jackwener.dsh.core.designsystem.DIcon
 import io.github.jackwener.dsh.core.designsystem.DInput
 import io.github.jackwener.dsh.core.designsystem.DSwitch
+import io.github.jackwener.dsh.core.designsystem.DMenu
+import io.github.jackwener.dsh.core.provider.ReasoningLevel
+import io.github.jackwener.dsh.core.session.SessionTitles
+import io.github.jackwener.dsh.core.designsystem.MenuItem
 import io.github.jackwener.dsh.core.designsystem.Dsh
 import io.github.jackwener.dsh.core.designsystem.DshType
 import io.github.jackwener.dsh.core.designsystem.FilterPill
@@ -200,6 +205,67 @@ fun DefaultModelCard(vm: SettingsViewModel) {
             }
         }
     }
+}
+
+/**
+ * 对话标题 (#89): 自动生成对话标题, 标题模型 (跟随对话模型, or one configured model; a light one saves
+ * tokens) and its 推理等级. The engine names a conversation once its first reply is done (SessionTitles).
+ */
+@Composable
+fun TitleCard(vm: SettingsViewModel) {
+    val c = Dsh.colors
+    val s by vm.settings.collectAsStateWithLifecycle()
+    SettingsGroupTitle(stringResource(R.string.title_group))
+    SettingsCard {
+        SettingsRow(stringResource(R.string.title_auto), stringResource(R.string.title_auto_desc), divider = false,
+            trailing = { DSwitch(s.autoTitle, vm::setAutoTitle) })
+        if (s.autoTitle) {
+            val pinned = SessionTitles.pinned(s)
+            val label = when {
+                pinned == null -> stringResource(R.string.title_model_follow)
+                pinned.isDeepSeek -> DEEPSEEK_MODELS.firstOrNull { it.first == pinned.model }?.second ?: pinned.model
+                else -> "${pinned.model} · ${s.providers.firstOrNull { it.id == pinned.provider }?.name ?: pinned.provider}"
+            }
+            var open by remember { mutableStateOf(false) }
+            Box {
+                SettingsRow(stringResource(R.string.title_model), label, onClick = { open = true },
+                    trailing = { DIcon(R.drawable.dsw_chevrons_up_down_outline, size = 14.dp, tint = c.labelTertiary) })
+                DMenu(open, { open = false }) {
+                    MenuItem(stringResource(R.string.title_model_follow), { open = false; vm.setTitleModel(null, null) }, selected = pinned == null)
+                    DEEPSEEK_MODELS.forEach { (id, name) ->
+                        MenuItem(name, { open = false; vm.setTitleModel("", id) }, description = "DeepSeek", selected = pinned?.isDeepSeek == true && pinned.model == id)
+                    }
+                    s.providers.filter { it.enabled }.forEach { p ->
+                        p.models.forEach { m ->
+                            MenuItem(m, { open = false; vm.setTitleModel(p.id, m) }, description = p.name, selected = pinned?.provider == p.id && pinned.model == m)
+                        }
+                    }
+                }
+            }
+            // 推理等级: 自动 (the lowest level, off where the model can), 跟随对话 while following, or one level of the configured model.
+            val effort = SessionTitles.effort(s)
+            val levels = listOf(ReasoningLevel(SessionTitles.LOWEST, "")) + SessionTitles.levels(s)
+            var openEffort by remember { mutableStateOf(false) }
+            Box {
+                SettingsRow(stringResource(R.string.title_effort), titleEffortName(effort, levels.firstOrNull { it.id == effort }?.name ?: effort),
+                    onClick = { openEffort = true },
+                    trailing = { DIcon(R.drawable.dsw_chevrons_up_down_outline, size = 14.dp, tint = c.labelTertiary) })
+                DMenu(openEffort, { openEffort = false }) {
+                    levels.forEach { l ->
+                        MenuItem(titleEffortName(l.id, l.name), { openEffort = false; vm.setTitleEffort(l.id.takeUnless { it == SessionTitles.LOWEST }) }, selected = l.id == effort)
+                    }
+                }
+            }
+            Text(stringResource(R.string.title_model_hint), Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp), style = DshType.xxs12, color = c.labelTertiary)
+        }
+    }
+}
+
+@Composable
+private fun titleEffortName(id: String, name: String): String = when (id) {
+    SessionTitles.LOWEST -> stringResource(R.string.title_effort_lowest)
+    SessionTitles.CONVERSATION -> stringResource(R.string.title_effort_conversation)
+    else -> name
 }
 
 /** Add (preset list → [onPreset] opens the editor for it) or edit one provider ([presetId]: the new provider's preset). */

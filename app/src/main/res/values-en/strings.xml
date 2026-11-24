@@ -938,4 +938,13 @@
     <string name="engine_jitless_desc">Turn on if the engine keeps crashing on this device (SIGSEGV, common on Android 16): V8 runs without its JIT compiler, more stable but slower, and features that need WebAssembly (such as image attachment processing) are unavailable. Applies when the idle engine restarts.</string>
     <string name="engine_jitless_auto">Turned on automatically %1$s after repeated engine crashes; once you turn it off it stays off.</string>
     <string name="engine_version">Engine version</string>
+    <string name="title_group">Conversation titles</string>
+    <string name="title_auto">Auto-generate titles</string>
+    <string name="title_auto_desc">After a new conversation\'s first reply, a model names it in a few words from the first message and the start of the reply (in the conversation\'s language). It runs in the background and never slows the conversation; on failure the title stays as it was. A conversation you renamed is never overwritten.</string>
+    <string name="title_model">Title model</string>
+    <string name="title_model_follow">Same as the conversation</string>
+    <string name="title_effort">Effort</string>
+    <string name="title_effort_lowest">Auto (off or lowest)</string>
+    <string name="title_effort_conversation">Same as the conversation</string>
+    <string name="title_model_hint">A separate light model at a low effort is recommended, so your main model does not spend tokens on titles.</string>
 </resources>

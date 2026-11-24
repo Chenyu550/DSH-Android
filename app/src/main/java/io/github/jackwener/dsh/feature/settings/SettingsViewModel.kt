@@ -178,6 +178,9 @@ class SettingsViewModel @Inject constructor(
     fun setAllowExternalApps(on: Boolean) = viewModelScope.launch { repo.setAllowExternalApps(on) }
     fun setVoiceOnAssist(on: Boolean) = viewModelScope.launch { repo.setVoiceOnAssist(on) }
     fun setAutoUpdateCheck(on: Boolean) = viewModelScope.launch { repo.setAutoUpdateCheck(on) }
+    fun setAutoTitle(on: Boolean) = viewModelScope.launch { repo.setAutoTitle(on) }
+    fun setTitleModel(provider: String?, model: String?) = viewModelScope.launch { repo.setTitleModel(provider, model) }
+    fun setTitleEffort(effort: String?) = viewModelScope.launch { repo.setTitleEffort(effort) }
     fun setEngineKeepAlive(on: Boolean) = viewModelScope.launch { engine.setKeepAlive(on) }
     fun setAgentScreen(on: Boolean) { viewModelScope.launch { repo.setAgentScreen(on) } }
     /** Only the degraded (untrusted) agent screen works on this phone (#60); the setting says what that means. */

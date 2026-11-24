@@ -938,4 +938,13 @@
     <string name="engine_jitless_desc">引擎在本机反复闪退（SIGSEGV，常见于 Android 16）时打开：V8 不再即时编译，更稳定但更慢，依赖 WebAssembly 的功能（如图片附件处理）不可用。引擎空闲时重启生效。</string>
     <string name="engine_jitless_auto">%1$s 检测到引擎连续崩溃，已自动开启；关闭后不再自动开启。</string>
     <string name="engine_version">引擎版本</string>
+    <string name="title_group">对话标题</string>
+    <string name="title_auto">自动生成对话标题</string>
+    <string name="title_auto_desc">新对话第一轮回复完成后，用模型根据首条消息和回复开头起一个短标题（跟随对话语言），在后台进行，不影响对话本身；失败时保留原标题。手动改过名的对话不会被覆盖。</string>
+    <string name="title_model">标题模型</string>
+    <string name="title_model_follow">跟随对话模型</string>
+    <string name="title_effort">推理等级</string>
+    <string name="title_effort_lowest">自动（优先关闭或最低）</string>
+    <string name="title_effort_conversation">跟随对话</string>
+    <string name="title_model_hint">建议单独选一个轻量模型并降低推理等级，避免主力模型为起标题浪费 Token。</string>
 </resources>

@@ -305,6 +305,7 @@ private fun ModelSection(vm: SettingsViewModel, onProvider: (String) -> Unit) {
     }
     ProvidersCard(vm, onProvider)
     DefaultModelCard(vm)
+    TitleCard(vm)
 }
 
 @Composable
