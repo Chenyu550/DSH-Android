@@ -111,6 +111,9 @@ class SessionStore @Inject constructor(
     private val sessionGrants = ConcurrentHashMap<String, MutableSet<String>>()
     /** sessionId -> engine generation it was last resumed/created in. */
     private val resumedIn = ConcurrentHashMap<String, Int>()
+    /** 工作目录 chosen for conversations that have not reached the engine yet (#76); sent before their first prompt. */
+    private val _pendingWorkingDirectories = MutableStateFlow<Map<String, String>>(emptyMap())
+    val pendingWorkingDirectories: StateFlow<Map<String, String>> = _pendingWorkingDirectories
     private val logSeqs = LogSeqs()
     private val localSeq = AtomicLong(-System.currentTimeMillis())
     /** Prompt attempts per session; an `app/error` is reported once per attempt (see [appendLocal]). */
@@ -339,6 +342,7 @@ class SessionStore @Inject constructor(
             sendMode(sdk, sessionId, flowOf(sessionId).value.modeId)
             // Its level is checked against what this engine reported (refreshed at start).
             sendModel(sdk, sessionId, engine.sessionRoute(model))
+            sendPendingWorkingDirectory(sdk, sessionId)
             val request = buildJsonObject {
                 put("sessionId", sessionId)
                 putJsonArray("contentBlocks") {
@@ -358,6 +362,7 @@ class SessionStore @Inject constructor(
                 sendPreset(sdk, sessionId, flowOf(sessionId).value.preset)
                 sendMode(sdk, sessionId, flowOf(sessionId).value.modeId)
                 sendModel(sdk, sessionId, engine.sessionRoute(model))
+                sendPendingWorkingDirectory(sdk, sessionId)
                 sdk.request("session/prompt", request)
             }
         } catch (e: NoCredentialsException) {
@@ -542,6 +547,35 @@ class SessionStore @Inject constructor(
         if (dao.get(sessionId) != null) dao.setPreset(sessionId, preset.id)
         mutate(sessionId) { it.copy(preset = preset) }
         engine.sdkIfReady()?.let { sendPreset(it, sessionId, preset) }
+    }
+
+    /**
+     * The conversation's working directory (#76, 工作目录): dsh's per-session directory
+     * (`session/working-directory/set`), kept in the session's log, so later turns and engine restarts
+     * keep it; the agent's `working_directory` tool changes the same one. A conversation the engine
+     * does not have yet gets it right before its first prompt.
+     */
+    suspend fun setWorkingDirectory(sessionId: String, path: String): Result<Unit> = runCatching {
+        if (flowOf(sessionId).value.events.none { it.seq >= 0 }) {
+            _pendingWorkingDirectories.update { it + (sessionId to path) }
+            return@runCatching
+        }
+        val sdk = engine.sdk(engine.sessionRoute(runModel(sessionId)))
+        engine.markSessionOpened()
+        val gen = engine.generation
+        if (resumedIn[sessionId] != gen) {
+            check(resume(sdk, sessionId)) { "session/resume failed" }
+            resumedIn[sessionId] = gen
+        }
+        sdk.request("session/working-directory/set", buildJsonObject { put("sessionId", sessionId); put("path", path) })
+    }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it; android.util.Log.w(TAG, "working directory of $sessionId", it) }.map { }
+
+    /** Kept when it fails (e.g. #57: the session exists but is not open yet), so the retry after the resume sends it. */
+    private suspend fun sendPendingWorkingDirectory(sdk: JsonRpcPeer, sessionId: String) {
+        val path = _pendingWorkingDirectories.value[sessionId] ?: return
+        runCatching { sdk.request("session/working-directory/set", buildJsonObject { put("sessionId", sessionId); put("path", path) }) }
+            .onSuccess { _pendingWorkingDirectories.update { it - sessionId } }
+            .onFailure { android.util.Log.w(TAG, "session/working-directory/set before the first prompt of $sessionId", it) }
     }
 
     private suspend fun sendPreset(sdk: JsonRpcPeer, sessionId: String, preset: PermissionPreset) {

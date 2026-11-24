@@ -96,6 +96,15 @@
     <string name="session_model_gone">此会话原用的模型 %1$s 已不可用，下一条消息将改用默认模型 %2$s</string>
     <string name="err_session_model">此会话的模型 %1$s 不可用：%2$s</string>
     <string name="model_switched_notice">已切换模型：%1$s</string>
+    <string name="workdir_changed_notice">工作目录：%1$s</string>
+    <string name="workdir_cmd">工作目录</string>
+    <string name="workdir_cmd_desc">当前：%1$s · 选一个 DSH 里的文件夹给本会话用</string>
+    <string name="workdir_outside">工作目录只能是“DSH”里的文件夹，请在“DSH”下选择</string>
+    <string name="workdir_failed">没能切换工作目录，请重试</string>
+    <string name="workspace_root_summary">智能体的工作目录</string>
+    <string name="workspace_open">在“文件”中打开工作目录</string>
+    <string name="workspace_open_desc">智能体的文件都在这里（文件 App 和其他应用的文件选择器里叫“DSH”），可以直接查看、编辑、放入文件，不用复制</string>
+    <string name="workspace_no_files_app">没有找到系统“文件”App。可以在任意应用的文件选择器里找到“DSH”</string>
     <string name="preset_read_only">仅可查看</string>
     <string name="preset_ask">操作需确认</string>
     <string name="preset_full">完全权限</string>

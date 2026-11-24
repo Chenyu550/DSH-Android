@@ -59,6 +59,25 @@ class ProjectorTest {
         assertEquals("deepseek-official/deepseek-flash → kimi/kimi-k3", notice.text)
     }
 
+    @Test fun `a working-directory change shows the new folder in the turn it reaches (#76)`() {
+        val events = listOf(
+            // Set before the first prompt: the record lands first, dsh's notice inside the turn.
+            ev(0, "working-directory/change", """{"cwd":"/data/home/blog"}"""),
+            ev(1, "turn/start", """{"turn":1}"""),
+            ev(2, "user/message", """{"source":{"kind":"user"},"content":[{"type":"text","text":"写一篇"}]}"""),
+            ev(3, "user/message", """{"source":{"kind":"working-directory"},"content":[{"type":"text","text":"The working directory changed from …"}]}"""),
+            ev(4, "assistant/message", """{"message":{"content":[{"type":"text","text":"好"}]}}"""),
+        )
+        val conv = Projector.conversation(events, running = true)
+        val turn = conv.turns.single()
+        assertEquals("写一篇", turn.user?.text)
+        val notice = turn.blocks.filterIsInstance<Block.Notice>().single()
+        assertEquals(WORKDIR_CHANGE, notice.kind)
+        assertEquals("/data/home/blog", notice.text)
+        assertEquals("/data/home/blog", conv.cwd)
+        assertNull(Projector.conversation(events.take(0), running = false).cwd)
+    }
+
     @Test fun `app prompt is not shown as a user message`() {
         val events = listOf(
             ev(0, "turn/start", """{"turn":1}"""),

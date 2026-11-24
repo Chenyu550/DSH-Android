@@ -205,6 +205,15 @@ fun ComposerSlot(vm: ConversationController, composer: ComposerState, settings: 
     val context = androidx.compose.ui.platform.LocalContext.current
     val modelChangePending by vm.modelChangePending.collectAsStateWithLifecycle()
     val model by vm.model.collectAsStateWithLifecycle()
+    // 工作目录 (#76): a folder of the agent's workspace, picked in the system folder picker (the DSH root).
+    val workingDirectory by vm.workingDirectory.collectAsStateWithLifecycle()
+    val home = remember { io.github.jackwener.dsh.core.platform.Workspace.home(context) }
+    val pickFolder = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val dir = io.github.jackwener.dsh.core.platform.Workspace.fileOfUri(context, uri)?.takeIf { it.isDirectory }
+        if (dir == null) android.widget.Toast.makeText(context, R.string.workdir_outside, android.widget.Toast.LENGTH_LONG).show()
+        else vm.setWorkingDirectory(dir.path) { ok -> if (!ok) android.widget.Toast.makeText(context, R.string.workdir_failed, android.widget.Toast.LENGTH_LONG).show() }
+    }
     val send = {
         val text = prepare(composer.outgoingText(context))
         val images = composer.images.map { it.mime to it.base64 }
@@ -248,6 +257,13 @@ fun ComposerSlot(vm: ConversationController, composer: ComposerState, settings: 
                 onNewSession = if (conv.isEmpty) null else ({ vm.newSession() }),
                 onTrajectory = if (conv.isEmpty) null else ({ vm.view.value = SessionView.Trajectory }),
                 onAutomation = onAutomation,
+                onWorkingDirectory = {
+                    val ws = io.github.jackwener.dsh.core.platform.Workspace
+                    val start = ws.docIdOf(home, java.io.File(workingDirectory ?: home.path))?.let { android.provider.DocumentsContract.buildDocumentUri(ws.authority(context), it) }
+                    runCatching { pickFolder.launch(start ?: ws.rootDocumentUri(context)) }
+                        .onFailure { android.widget.Toast.makeText(context, R.string.workspace_no_files_app, android.widget.Toast.LENGTH_LONG).show() }
+                },
+                workingDirectory = workingDirectory?.let { io.github.jackwener.dsh.core.platform.Workspace.displayPath(home.path, it) },
             ),
             showChips = showChips,
             canSendEmpty = canSendEmpty,

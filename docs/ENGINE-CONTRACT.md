@@ -30,7 +30,7 @@ Environment (set with `Os.setenv` before start):
 | Var | Value |
 |---|---|
 | `DSH_HOME` | `<filesDir>/dsh-home` |
-| `HOME` | `<filesDir>/home` (also the default workspace / cwd) |
+| `HOME` | `<filesDir>/home` (also the default workspace / cwd; the user's "DSH" folder in the system Files app, #76) |
 | `TMPDIR` | `<cacheDir>/tmp` |
 | `SHELL` | `/system/bin/sh` |
 | `PATH` | `<filesDir>/bin:/system/bin:/system/xbin` (`files/bin/rg` → `<nativeLibraryDir>/librg.so`, `files/bin/node` → `<nativeLibraryDir>/libdshnode.so`) |
@@ -201,6 +201,11 @@ an offset past its log (`LogSeqs`), never treating a seq as a cross-generation i
   engine runs. dsh's user title pins the conversation (a title call still waiting is dropped); `applied: false` when
   this process does not hold the conversation. The app keeps its own record either way (`app/title` event: engine
   `session/title` events never replace a title the user set).
+- `session/working-directory/set { sessionId, path }` → `{ cwd }` (dsh 0.2.2, #76): 工作目录 in the composer (a folder of
+  HOME picked in the system folder picker through the app's documents provider). dsh keeps it per session in the log
+  (`working-directory/change`) and tells the model with a `user/message` `source { kind: 'working-directory' }` at its next
+  step (the chat shows it as a quiet 工作目录 line); the agent's own `working_directory` tool changes the same directory. A
+  conversation the engine does not have yet gets it right before its first `session/prompt` (after `android/session/model`).
 - `android/reasoning/translate { text, targetLanguage }` → `{ text, provider }` | `{ error: { code, message } }`
   (plugin-guard `translate.js`, row `android-translate`, #15): 翻译 under an expanded 思考 row. dsh's `translator`
   service (`@deepseek-ai/dsh-experimental-translator`, row `translator`) sends the text to Bing's anonymous Edge endpoint,

@@ -96,6 +96,15 @@
     <string name="session_model_gone">This conversation\'s model %1$s is no longer available; the next message uses the default, %2$s</string>
     <string name="err_session_model">This conversation\'s model %1$s is unavailable: %2$s</string>
     <string name="model_switched_notice">Model switched: %1$s</string>
+    <string name="workdir_changed_notice">Working directory: %1$s</string>
+    <string name="workdir_cmd">Working directory</string>
+    <string name="workdir_cmd_desc">Now: %1$s · pick a folder in DSH for this conversation</string>
+    <string name="workdir_outside">The working directory must be a folder inside “DSH”. Pick one there.</string>
+    <string name="workdir_failed">Couldn\'t change the working directory. Try again.</string>
+    <string name="workspace_root_summary">The agent\'s working directory</string>
+    <string name="workspace_open">Open working directory in Files</string>
+    <string name="workspace_open_desc">The agent\'s files live here (“DSH” in the Files app and in other apps\' file pickers): view, edit and add files in place, no copies</string>
+    <string name="workspace_no_files_app">No system Files app found. “DSH” is also listed in any app\'s file picker.</string>
     <string name="preset_read_only">Read only</string>
     <string name="preset_ask">Ask to act</string>
     <string name="preset_full">Full access</string>
