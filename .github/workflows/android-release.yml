@@ -1,0 +1,60 @@
+name: Build Release APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      WORK: ${{ github.workspace }}/toolchains
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: js/engine/package-lock.json
+
+      - name: Install Android SDK packages
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            'platforms;android-37.2' 'build-tools;36.0.0'
+
+      - name: Fetch prebuilt native libraries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: native/prebuilt.sh fetch
+
+      - name: Build JS engine bundle
+        env:
+          OUT_DIR: ${{ env.WORK }}/out/engine
+        run: js/build-engine.sh
+
+      - name: Assemble release APK
+        run: |
+          ./gradlew --no-daemon :app:assembleRelease \
+            -Pdsh.nativeOut="$WORK/out/jniLibs" \
+            -Pdsh.engineOut="$WORK/out/engine"
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: DSH-Android-release-arm64
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error

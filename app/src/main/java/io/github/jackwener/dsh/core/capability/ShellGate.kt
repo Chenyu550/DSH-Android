@@ -60,8 +60,7 @@ class ShellGate @Inject constructor(val shell: DeviceShell, private val sessions
         val reason = shell.reason()
         return ToolResult.error("shizuku_unavailable", when {
             call.unattended -> "This step needs shell access (Shizuku or wireless-debugging ADB), but $reason. Automations cannot ask the user to set it up; skip this step or report it."
-            else -> "This needs shell access (Shizuku or wireless-debugging ADB), but $reason and the user chose not to set it up now. Do not call shell-only tools again " +
-                "in this session; do it another way (system intents, settings panels, screen tools) or tell the user it can be enabled in DSH → Settings → Phone."
+            else -> "This needs shell access (Shizuku or wireless-debugging ADB), but $reason."
         })
     }
 
@@ -70,7 +69,7 @@ class ShellGate @Inject constructor(val shell: DeviceShell, private val sessions
         fun staticNote(use: ShellUse, fallback: String?): String = when (use) {
             ShellUse.None -> ""
             ShellUse.Fallback -> " [Uses shell access (Shizuku or wireless-debugging ADB) when ready; otherwise it will ${fallback ?: "use a non-shell fallback"}. The result says which path ran.]"
-            ShellUse.Required -> " [Needs shell access (Shizuku or wireless-debugging ADB). If neither is ready, the call shows the user a setup card; if it returns shizuku_unavailable, don't call shell-only tools again this session.]"
+            ShellUse.Required -> " [Needs shell access (Shizuku or wireless-debugging ADB). If neither is ready, the call shows the user a setup card.]"
         }
     }
 }
