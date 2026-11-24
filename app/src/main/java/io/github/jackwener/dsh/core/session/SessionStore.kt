@@ -1048,6 +1048,7 @@ class SessionStore @Inject constructor(
                 "do not disturb" in w -> "dnd"
                 "modify system" in w -> "write_settings"
                 "shizuku" in w -> null
+                "termux" in w -> "termux"
                 listOf("contacts", "sms", "call log", "calendar").any { it in w } -> "comms"
                 "location" in w -> "location"
                 "bluetooth" in w -> "bluetooth"

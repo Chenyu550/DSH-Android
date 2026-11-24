@@ -42,12 +42,20 @@ const SHELL_TOOLS = new Map([
   ['bash', 'command'], ['pwsh', 'command'], ['terminal_send', 'text'], ['terminal_open', 'command'],
 ])
 /**
- * Device tools that run a shell command line as the Android shell user (uid 2000, through Shizuku):
- * the same hardline floor applies, judged from the directory they run in ("/", like `adb shell`)
- * and with an unknown HOME treated as "/". They keep the device tool's risk-based approval.
+ * Device tools that run a shell command line outside the engine: adb_shell as the Android shell user
+ * (uid 2000; runs from "/", like `adb shell`) and termux_run in the user's own Termux (#68; runs in
+ * its `cwd` argument, else Termux's home). The same hardline floor applies, judged from that
+ * directory with HOME set to the tool's home. They keep the device tool's risk-based approval.
  */
-const DEVICE_SHELL_TOOLS = new Map([['adb_shell', 'command']])
-const DEVICE_SHELL_CWD = '/'
+const TERMUX_HOME = '/data/data/com.termux/files/home'
+/** termux_run's working directory as the app resolves it (Termux.workdir): "~" is Termux's home. */
+const termuxCwd = cwd => typeof cwd === 'string' && cwd.trim() !== ''
+  ? posix.resolve(TERMUX_HOME, cwd.trim().replace(/^~(?=\/|$)/, TERMUX_HOME))
+  : TERMUX_HOME
+const DEVICE_SHELL_TOOLS = new Map([
+  ['adb_shell', { field: 'command', home: '/', cwd: () => '/' }],
+  ['termux_run', { field: 'command', home: TERMUX_HOME, cwd: args => termuxCwd(args?.cwd) }],
+])
 /** Built-in file tools whose `file_path` may be auto-allowed inside the app's own directories. */
 const FILE_WRITE_TOOLS = new Set(['write', 'edit'])
 
@@ -234,7 +242,7 @@ Approvals and safety:
 - Read-only tools and read-only shell commands run directly${homeWrites ? ', and so do file writes inside your private home and temp folders (except in 仅可查看 mode)' : ''}. Other actions that change the phone ask the user, depending on the permission mode the user picked for this conversation; a read of private data (messages, contacts, notifications, clipboard, …) asks once per conversation.
 - If the user rejects a call, do not retry it — ask what they want instead. If a call is refused because the conversation is in 仅可查看 (read-only) mode, tell the user and ask them to switch the permission mode if they want the change made.
 - Before deleting, moving or overwriting files, state exactly which files and folders are affected (list them, or give the count and paths) and confirm the scope with the user unless they already named the exact items. Prefer the narrowest scope; never act on whole storage roots.
-- The app hard-blocks some shell commands, in bash and adb_shell alike (wiping storage roots or system directories, formatting or writing block devices, reboot/shutdown, fork bombs, executing decoded payloads, uninstalling system packages, deleting system settings): such a call is refused before it runs and returns HARDLINE_BLOCKED. Never try to work around a block.
+- The app hard-blocks some shell commands, in bash, adb_shell and termux_run alike (wiping storage roots or system directories, formatting or writing block devices, reboot/shutdown, fork bombs, executing decoded payloads, uninstalling system packages, deleting system settings): such a call is refused before it runs and returns HARDLINE_BLOCKED. Never try to work around a block.
 
 ${screenSection(descriptors)}${shell ? "Shell: the bash tool runs Android's /system/bin/sh (mksh) with toybox utilities, not GNU bash/coreutils; there is no root. " : ''}The user's shared storage is /sdcard (= /storage/emulated/0). Your working directory is the app's private home folder.
 
@@ -385,8 +393,8 @@ export function apply(ctx, config = {}) {
   const hardlineVerdict = exec => {
     const device = DEVICE_SHELL_TOOLS.get(exec.name)
     if (device !== undefined) {
-      const text = exec.arguments?.[device]
-      return typeof text === 'string' ? checkCommand(text, { cwd: DEVICE_SHELL_CWD, env: { HOME: DEVICE_SHELL_CWD } }) : undefined
+      const text = exec.arguments?.[device.field]
+      return typeof text === 'string' ? checkCommand(text, { cwd: device.cwd(exec.arguments), env: { HOME: device.home } }) : undefined
     }
     const field = SHELL_TOOLS.get(exec.name)
     if (field === undefined) return undefined

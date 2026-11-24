@@ -306,6 +306,7 @@
     <string name="tool_mobile_data">Мобильные данные</string>
     <string name="tool_setting_put">Изменить настройки системы</string>
     <string name="tool_adb_shell">Команда от имени Shell</string>
+    <string name="tool_termux_run">Команда в Termux</string>
     <string name="tool_notif_list">Чтение уведомлений</string>
     <string name="tool_notif_dismiss">Убрать уведомления</string>
     <string name="tool_contacts">Поиск контактов</string>

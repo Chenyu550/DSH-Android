@@ -64,3 +64,24 @@ test('adb_shell (shell user through Shizuku) gets the same hardline floor as bas
     assert.equal(guards[0]({ name: 'adb_shell', arguments: { command: ok } }), undefined, ok)
   }
 })
+
+test('termux_run (the user\'s Termux, #68) gets the hardline floor, judged from its cwd with Termux\'s HOME', async () => {
+  process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'guard-termux-'))
+  const agent = { id: 'a1', session: { id: 's1', header: {} } }
+  const guards = []
+  const { ctx, listeners } = fakeContext({ agents: { list: () => [agent] } })
+  ctx.tools.guard = fn => { guards.push(fn); return () => {} }
+  apply(ctx, { ledgerPath: join(process.env.DSH_HOME, 'budget.json') })
+  const pre = listeners.get('tools/pre-execute')[0]
+  const ask = async () => ({ kind: 'ask', reason: 'device tool' })
+  const run = args => pre({ name: 'termux_run', arguments: args, agent, callId: 'c' }, ask)
+  for (const args of [{ command: 'reboot' }, { command: 'rm -rf /sdcard' }, { command: 'rm -rf *', cwd: '/sdcard' }]) {
+    const d = await run(args)
+    assert.equal(d.kind, 'deny', JSON.stringify(args))
+    assert.equal(d.info?.code, 'HARDLINE_BLOCKED', JSON.stringify(args))
+  }
+  for (const args of [{ command: 'pkg list-installed' }, { command: 'python3 -V', cwd: '~/proj' }, { command: 'rm -rf build', cwd: '~/proj' }]) {
+    assert.notEqual((await run(args)).kind, 'deny', JSON.stringify(args))
+    assert.equal(guards[0]({ name: 'termux_run', arguments: args }), undefined, JSON.stringify(args))
+  }
+})

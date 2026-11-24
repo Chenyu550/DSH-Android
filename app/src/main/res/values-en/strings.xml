@@ -309,6 +309,7 @@
     <string name="tool_mobile_data">Mobile data</string>
     <string name="tool_setting_put">Change system setting</string>
     <string name="tool_adb_shell">Run as shell user</string>
+    <string name="tool_termux_run">Run in Termux</string>
     <string name="tool_notif_list">Read notifications</string>
     <string name="tool_notif_dismiss">Dismiss notification</string>
     <string name="tool_contacts">Search contacts</string>

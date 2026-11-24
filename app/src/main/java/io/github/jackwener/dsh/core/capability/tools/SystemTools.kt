@@ -37,6 +37,9 @@ import io.github.jackwener.dsh.core.capability.ShellUse
 import io.github.jackwener.dsh.core.platform.AppVisibility
 import io.github.jackwener.dsh.core.platform.Locator
 import io.github.jackwener.dsh.core.platform.ShellUnavailableException
+import io.github.jackwener.dsh.core.platform.Termux
+import io.github.jackwener.dsh.core.platform.TermuxBridge
+import io.github.jackwener.dsh.core.platform.TermuxException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -48,6 +51,7 @@ class SystemTools @Inject constructor(
     @ApplicationContext private val context: Context,
     private val gate: ShellGate,
     private val launcher: ActivityLauncher,
+    private val termux: TermuxBridge,
 ) : ToolSet {
     private val shizuku get() = gate.shell
 
@@ -392,7 +396,35 @@ class SystemTools @Inject constructor(
                 return ToolResult.text(AdbShell.format(r.code, r.output, timeoutS))
             }
         },
+        object : Tool(TermuxRun.NAME, ToolGroup.System, Risk.write, false, TermuxRun.DESCRIPTION, {
+                string("command", "The bash command line, e.g. \"pkg list-installed\", \"python3 script.py\", \"git -C ~/proj pull\"", required = true)
+                string("cwd", "Working directory (default: Termux home ${Termux.HOME}; ~/storage/shared is /sdcard once termux-setup-storage ran)")
+                int("timeout_s", "Seconds before the command is stopped (default ${AdbShell.DEFAULT_TIMEOUT_S}, max ${AdbShell.MAX_TIMEOUT_S})")
+            }) {
+            override suspend fun invoke(args: JsonObject, call: CallContext): ToolResult {
+                // Like adb_shell: the hardline floor lives in the engine (plugin-guard).
+                if (!call.viaEngine) return ToolResult.error("not_authorized", TermuxRun.NOT_FROM_ENGINE)
+                val timeoutS = AdbShell.timeoutS(args.int("timeout_s"))
+                return try {
+                    ToolResult.text(Termux.format(termux.run(args.reqStr("command"), args.str("cwd"), timeoutS), timeoutS))
+                } catch (e: TermuxException) {
+                    ToolResult.error(e.code, e.message ?: e.code)
+                }
+            }
+        },
     )
+}
+
+/** `termux_run`: a command in the user's own Termux (#68), next to (never instead of) the built-in bash. */
+internal object TermuxRun {
+    const val NAME = "termux_run"
+    const val DESCRIPTION = "Run a bash command inside the user's own Termux app (its environment: pkg/apt packages, gcc, git, python, ~/storage), " +
+        "not in DSH's built-in shell. Use it only when the user wants Termux or needs a package only Termux has; the bash tool stays the default. " +
+        "Background task without a terminal: no prompts or interactive programs; stopped at the timeout (exit 124). Returns the exit code, stdout and stderr. " +
+        "Errors name what is missing: termux_unavailable (not installed / not reachable), termux_not_allowed (allow-external-apps is off; the message has the fix), " +
+        "permission_missing (the user declined DSH's Termux permission). The same hard blocks as bash apply."
+    const val NOT_FROM_ENGINE = "termux_run runs only from a conversation or an automation's agent run (where DSH's command safety checks see it), " +
+        "not as a direct automation step. Make the automation an agent action instead."
 }
 
 /** `adb_shell`: a command as the shell user through Shizuku (= `adb shell <command>`), for what an app's own shell cannot do. */

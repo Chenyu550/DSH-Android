@@ -39,6 +39,8 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- AlarmClock.ACTION_SET_ALARM / ACTION_SET_TIMER handlers (DeskClock HandleApiCalls) require it. -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- termux_run (#68): commands in the user's own Termux through its RunCommandService (runtime permission Termux defines). -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
     <queries>
         <intent><action android:name="android.intent.action.MAIN" /></intent>
@@ -47,6 +49,8 @@
         <!-- Shizuku manager (shell access) and Play Store (to install it). -->
         <package android:name="moe.shizuku.privileged.api" />
         <package android:name="com.android.vending" />
+        <!-- Termux (termux_run). -->
+        <package android:name="com.termux" />
         <!-- Vendor keep-alive screens (RomKeepAlive; RomKeepAliveTest keeps this list in sync). -->
         <package android:name="com.coloros.oppoguardelf" />
         <package android:name="com.coloros.safecenter" />
@@ -266,6 +270,8 @@
         </service>
 
         <receiver android:name=".core.trigger.TriggerReceiver" android:exported="false" />
+        <!-- Termux's command results (the PendingIntent termux_run hands to RunCommandService). -->
+        <receiver android:name=".core.platform.TermuxResultReceiver" android:exported="false" />
         <receiver android:name=".core.trigger.BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

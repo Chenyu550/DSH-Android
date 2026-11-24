@@ -268,7 +268,7 @@ class SettingsViewModel @Inject constructor(
     fun runDoctor() = viewModelScope.launch {
         val zh = context.resources.configuration.locales[0].language == "zh"
         val checks = mutableListOf<DoctorCheck>()
-        PermissionCatalog.forGroups(settings.value.enabledGroups).forEach {
+        PermissionCatalog.forGroups(settings.value.enabledGroups).filter { it.available(context) }.forEach {
             checks += DoctorCheck(it.title(zh), it.check(context), it.why(zh), it.intent(context))
         }
         val shell = shizuku.access.refresh()
